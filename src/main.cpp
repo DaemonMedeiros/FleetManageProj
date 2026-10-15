@@ -5,6 +5,7 @@
 #include "dashboard.h"
 #include "fleet.h"
 #include "map.h"
+#include "osm_map.h"
 #include "ui.h"
 
 #include <ctime>
@@ -45,6 +46,7 @@ int main() {
         EndDrawing();
     }
 
+    UnloadOsmMap();
     CloseWindow();
     return 0;
 }
