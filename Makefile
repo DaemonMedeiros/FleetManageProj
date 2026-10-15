@@ -56,11 +56,13 @@ SRC_SUBDIRS      := $(sort $(dir $(call rwildcard,$(SRC_DIR)/,*.hpp)) $(dir $(ca
 INCLUDE_DIRS := $(INC_DIR) $(SRC_DIR) $(INCLUDE_SUBDIRS) $(SRC_SUBDIRS)
 
 # ---- Compiler / linker flags ----
+# raylib is added with -isystem (not -I) so GCC treats its headers as system
+# headers and doesn't print -Wextra warnings from raylib's own raymath.h etc.
 CXXFLAGS := -std=c++17 -Wall -Wextra -O2 -MMD -MP \
             $(addprefix -I,$(INCLUDE_DIRS)) \
-            -I$(RAYLIB_PATH)/include
+            -isystem $(RAYLIB_PATH)/include
 
-CFLAGS := -std=c17 -Wall -Wextra -O2 -I$(RAYLIB_PATH)/include
+CFLAGS := -std=c17 -Wall -Wextra -O2 -isystem $(RAYLIB_PATH)/include
 
 LDFLAGS := -L$(RAYLIB_PATH)/lib
 LDLIBS  := -lraylib -lopengl32 -lgdi32 -lwinmm -static -static-libgcc -static-libstdc++
