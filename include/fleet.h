@@ -24,6 +24,14 @@ constexpr const char* LATEST_SW      = "2.4.0";   // newest software version
 // ----------------------------------------------------------------------------
 enum Damage { DMG_NONE = 0, DMG_MINOR, DMG_MAJOR };
 
+enum AutoState { AUTO_IDLE = 0, AUTO_DIVERTING, AUTO_SERVICING, AUTO_CHARGING };
+
+struct SavedMission {        // route interrupted by automation, to resume later
+    bool valid    = false;
+    int  startLoc = -1;
+    int  endLoc   = -1;
+};
+
 struct Location {            // named addresses drones fly between
     std::string name;
     Vector2     pos;         // km
@@ -60,6 +68,13 @@ struct Drone {
     int                  nextWp = 0;     // index of next waypoint
     std::vector<Vector2> history;        // travelled trail
     float                histTimer = 0.0f;
+
+    // --- automation (owned by automation.cpp) ---
+    AutoState    autoState       = AUTO_IDLE;
+    float        autoTimer       = 0.0f;    // simulated seconds left for servicing/charging
+    float        autoChargeStart = 100.0f;  // battery at the start of an automated charge
+    float        idleTimer       = 0.0f;    // simulated seconds spent idle (for auto-dispatch)
+    SavedMission savedMission;
 };
 
 // ----------------------------------------------------------------------------

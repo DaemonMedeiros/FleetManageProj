@@ -21,10 +21,12 @@ Vector2 ParkPos(const Drone& d, int loc) {
 bool SwOutdated(const Drone& d) { return d.sw != LATEST_SW; }
 
 bool CanDispatch(const Drone& d) {
-    return !d.active && d.locIndex >= 0 && d.damage != DMG_MAJOR && d.battery >= MIN_DISPATCH_BATTERY;
+    return d.autoState == AUTO_IDLE && !d.active && d.locIndex >= 0
+        && d.damage != DMG_MAJOR && d.battery >= MIN_DISPATCH_BATTERY;
 }
 
 const char* DispatchBlockReason(const Drone& d) {
+    if (d.autoState != AUTO_IDLE)          return "Automation is servicing this drone";
     if (d.active)                          return "Drone is already in flight";
     if (d.damage == DMG_MAJOR)             return "Major damage - service required";
     if (d.battery < MIN_DISPATCH_BATTERY)  return "Battery below 50% - charging";

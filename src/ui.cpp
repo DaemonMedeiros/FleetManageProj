@@ -1,6 +1,8 @@
 // ui.cpp - shared GUI helpers, widgets and the header bar
 #include "ui.h"
 
+#include "automation.h"
+
 AppState g_app;
 
 // ----------------------------------------------------------------------------
@@ -69,6 +71,11 @@ void DrawHeader() {
 
     if (TabButton({ 330, 8, 140, 34 }, "Dashboard", g_app.page == PAGE_DASHBOARD)) g_app.page = PAGE_DASHBOARD;
     if (TabButton({ 480, 8, 140, 34 }, "Map", g_app.page == PAGE_MAP))             g_app.page = PAGE_MAP;
+
+    if (Button({ 640, 8, 130, 34 }, g_app.automation ? "Auto: ON" : "Auto: OFF")) {
+        g_app.automation = !g_app.automation;
+        if (!g_app.automation) ReleaseAllFromAutomation();
+    }
 
     if (Button({ (float)SCREEN_W - 330, 8, 100, 34 }, g_app.paused ? "Resume" : "Pause")) g_app.paused = !g_app.paused;
     if (Button({ (float)SCREEN_W - 220, 8, 100, 34 }, TextFormat("Sim x%d", g_app.simMult))) {

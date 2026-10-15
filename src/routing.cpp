@@ -29,12 +29,11 @@ void MoveAlong(Drone& d, float km) {
     }
 }
 
-// Create a new random mission from the drone's current location.
-void Dispatch(Drone& d) {
-    int n = (int)g_locations.size();
+// Dispatch from d.locIndex to a chosen destination.
+// Precondition: d.locIndex >= 0 and end != d.locIndex (otherwise the
+// perpendicular calculation below divides by zero).
+void DispatchTo(Drone& d, int end) {
     int start = d.locIndex;
-    int end;
-    do { end = GetRandomValue(0, n - 1); } while (end == start);
 
     d.startLoc = start;
     d.endLoc = end;
@@ -68,15 +67,40 @@ void Dispatch(Drone& d) {
     d.histTimer = 0.0f;
 }
 
-// Abort mission and fly back to the start address.
-void Recall(Drone& d) {
-    if (!d.active || d.startLoc < 0) return;
-    d.endLoc = d.startLoc;
+// Create a new random mission from the drone's current location.
+void Dispatch(Drone& d) {
+    int n = (int)g_locations.size();
+    int end;
+    do { end = GetRandomValue(0, n - 1); } while (end == d.locIndex);
+    DispatchTo(d, end);
+}
+
+// Active drone: fly straight to a location and land.
+void DivertTo(Drone& d, int loc) {
+    if (!d.active || loc < 0) return;
+    d.endLoc = loc;
     d.returning = true;
     d.path.clear();
     d.path.push_back(d.pos);
-    d.path.push_back(g_locations[d.endLoc].pos);
+    d.path.push_back(g_locations[loc].pos);
     d.nextWp = 1;
+}
+
+// Abort mission and fly back to the start address.
+void Recall(Drone& d) {
+    if (!d.active || d.startLoc < 0) return;
+    DivertTo(d, d.startLoc);
+}
+
+// Index of closest location, -1 if none.
+int NearestLocation(Vector2 posKm) {
+    int best = -1;
+    float bestDist = 0.0f;
+    for (int i = 0; i < (int)g_locations.size(); i++) {
+        float dist = Vector2Distance(posKm, g_locations[i].pos);
+        if (best < 0 || dist < bestDist) { best = i; bestDist = dist; }
+    }
+    return best;
 }
 
 // Replace the remaining route with a direct line to the destination.

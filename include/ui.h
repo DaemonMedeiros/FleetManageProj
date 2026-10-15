@@ -17,6 +17,7 @@ struct AppState {
     int  selected = 0;          // index into g_fleet
     bool paused   = false;
     int  simMult  = 1;          // simulation speed multiplier (1, 2, 4)
+    bool automation = true;     // automation on/off toggle
 };
 extern AppState g_app;
 
@@ -38,15 +39,15 @@ static const Color COL_BAD        = { 235, 85,  85,  255 };
 static const Color COL_BTN        = { 55,  100, 190, 255 };
 static const Color COL_BTN_HOVER  = { 80,  130, 220, 255 };
 static const Color COL_BTN_OFF    = { 50,  55,  66,  255 };
-static const Color COL_TAB_ON     = { 36,  70,  120, 255 };
-static const Color COL_TAB_OFF    = { 34,  40,  52,  255 };
-static const Color COL_TAB_HOVER  = { 50,  58,  74,  255 };
-static const Color COL_MAP_BG     = { 10,  14,  20,  255 };
-static const Color COL_WORLD      = { 20,  31,  44,  255 };
-static const Color COL_GRID       = { 32,  46,  64,  255 };
-static const Color COL_GRID_MAJOR = { 46,  64,  88,  255 };
+static const Color COL_TAB_ON     = { 36,  70, 120, 255 };
+static const Color COL_TAB_OFF    = { 34,  40,  52, 255 };
+static const Color COL_TAB_HOVER  = { 50,  58,  74, 255 };
+static const Color COL_MAP_BG     = { 10,  14,  20, 255 };
+static const Color COL_WORLD      = { 20,  31,  44, 255 };
+static const Color COL_GRID       = { 32,  46,  64, 255 };
+static const Color COL_GRID_MAJOR = { 46,  64,  88, 255 };
 static const Color COL_LOCATION   = { 110, 130, 165, 255 };
-static const Color COL_BATT_BG    = { 40,  46,  58,  255 };
+static const Color COL_BATT_BG    = { 40,  46,  58, 255 };
 static const Color COL_BORDER     = { 90,  98,  112, 255 };
 
 // ----------------------------------------------------------------------------

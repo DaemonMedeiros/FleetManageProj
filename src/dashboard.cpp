@@ -1,6 +1,7 @@
 // dashboard.cpp - dashboard page: summary cards, drone list, detail panel
 #include "dashboard.h"
 
+#include "automation.h"
 #include "fleet.h"
 #include "routing.h"
 #include "ui.h"
@@ -47,6 +48,7 @@ static void DrawDetailPanel() {
     Field("Software", TextFormat("v%s%s", d.sw.c_str(), SwOutdated(d) ? "  (update available)" : "  (latest)"),
           x, y, SwOutdated(d) ? COL_WARN : COL_TEXT);                                 y += STEP;
     Field("Condition", DamageText(d.damage), x, y, DamageColor(d.damage));            y += STEP;
+    Field("Automation", AutoStateText(d), x, y);                                      y += STEP;
     Field("Priority", PriorityText(d.priority), x, y);                                y += STEP;
     Field("Position", TextFormat("(%.1f, %.1f) km", d.pos.x, d.pos.y), x, y);         y += STEP;
 
