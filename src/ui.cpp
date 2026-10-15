@@ -25,12 +25,16 @@ Color DamageColor(Damage d) {
 const char* PriorityText(int p) { return p == 1 ? "High" : (p == 2 ? "Normal" : "Low"); }
 
 // ----------------------------------------------------------------------------
-//  Widgets
+//  Widgets - squared, terminal-style with thin accent borders
 // ----------------------------------------------------------------------------
 bool Button(Rectangle r, const char* text, bool enabled) {
     bool hover = enabled && CheckCollisionPointRec(GetMousePosition(), r);
-    Color bg = !enabled ? COL_BTN_OFF : (hover ? COL_BTN_HOVER : COL_BTN);
-    DrawRectangleRounded(r, 0.25f, 8, bg);
+    Color bg     = !enabled ? COL_BTN_OFF : (hover ? COL_BTN_HOVER : COL_BTN);
+    Color border = !enabled ? COL_BTN_OFF : (hover ? COL_ACCENT    : COL_BORDER);
+
+    DrawRectangleRec(r, bg);
+    DrawRectangleLinesEx(r, 1, border);
+
     int tw = MeasureText(text, 16);
     DrawText(text, (int)(r.x + (r.width - tw) / 2), (int)(r.y + (r.height - 16) / 2), 16,
              enabled ? COL_TEXT : COL_GREY);
@@ -40,8 +44,16 @@ bool Button(Rectangle r, const char* text, bool enabled) {
 bool TabButton(Rectangle r, const char* text, bool selected) {
     bool hover = CheckCollisionPointRec(GetMousePosition(), r);
     Color bg = selected ? COL_TAB_ON : (hover ? COL_TAB_HOVER : COL_TAB_OFF);
-    DrawRectangleRounded(r, 0.3f, 8, bg);
-    if (selected) DrawRectangle((int)r.x + 10, (int)(r.y + r.height - 3), (int)r.width - 20, 3, COL_ACCENT);
+    DrawRectangleRec(r, bg);
+
+    if (selected) {
+        DrawRectangleLinesEx(r, 1, COL_ACCENT);
+        // thick underline accent
+        DrawRectangle((int)r.x, (int)(r.y + r.height - 3), (int)r.width, 3, COL_ACCENT);
+    } else if (hover) {
+        DrawRectangleLinesEx(r, 1, COL_BORDER);
+    }
+
     int tw = MeasureText(text, 18);
     DrawText(text, (int)(r.x + (r.width - tw) / 2), (int)(r.y + (r.height - 18) / 2), 18,
              selected ? COL_TEXT : COL_DIM);
@@ -66,8 +78,17 @@ void Field(const char* label, const char* value, float x, float y, Color vc) {
 // ----------------------------------------------------------------------------
 void DrawHeader() {
     DrawRectangle(0, 0, SCREEN_W, 50, COL_PANEL);
-    DrawRectangle(0, 49, SCREEN_W, 1, COL_BORDER);
-    DrawText("DRONE FLEET MANAGER", 16, 14, 22, COL_TEXT);
+    DrawRectangle(0, 49, SCREEN_W, 1, COL_ACCENT);
+
+    // Terminal-prompt style title with a blinking block cursor
+    const char* title = "DRONE FLEET MANAGER";
+    const int   tsize = 22;
+    DrawText(">", 16, 14, tsize, COL_ACCENT);
+    DrawText(title, 34, 14, tsize, COL_TEXT);
+    if ((int)(GetTime() * 2.0) % 2 == 0) {
+        int tw = MeasureText(title, tsize);
+        DrawRectangle(34 + tw + 6, 18, 12, 18, COL_ACCENT);
+    }
 
     if (TabButton({ 330, 8, 140, 34 }, "Dashboard", g_app.page == PAGE_DASHBOARD)) g_app.page = PAGE_DASHBOARD;
     if (TabButton({ 480, 8, 140, 34 }, "Map", g_app.page == PAGE_MAP))             g_app.page = PAGE_MAP;
@@ -81,5 +102,5 @@ void DrawHeader() {
     if (Button({ (float)SCREEN_W - 220, 8, 100, 34 }, TextFormat("Sim x%d", g_app.simMult))) {
         g_app.simMult = (g_app.simMult == 1) ? 2 : (g_app.simMult == 2 ? 4 : 1);
     }
-    DrawText(TextFormat("%d FPS", GetFPS()), SCREEN_W - 100, 18, 16, COL_DIM);
+    DrawText(TextFormat("[ %d FPS ]", GetFPS()), SCREEN_W - 108, 18, 16, COL_DIM);
 }

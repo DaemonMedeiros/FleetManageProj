@@ -22,33 +22,46 @@ struct AppState {
 extern AppState g_app;
 
 // ----------------------------------------------------------------------------
-//  Colours
+//  Colours - "Matrix terminal" palette (phosphor green on near-black)
 // ----------------------------------------------------------------------------
-static const Color COL_BG         = { 14,  18,  26, 255 };
-static const Color COL_PANEL      = { 26,  32,  44, 255 };
-static const Color COL_PANEL_ALT  = { 31,  38,  52, 255 };
-static const Color COL_SEL        = { 36,  70, 120, 255 };
-static const Color COL_HOVER      = { 40,  48,  66, 255 };
-static const Color COL_TEXT       = { 230, 235, 245, 255 };
-static const Color COL_DIM        = { 140, 150, 168, 255 };
-static const Color COL_GREY       = { 95,  102, 115, 255 };
-static const Color COL_ACCENT     = { 64,  180, 255, 255 };
-static const Color COL_GOOD       = { 72,  200, 120, 255 };
-static const Color COL_WARN       = { 245, 180, 50,  255 };
-static const Color COL_BAD        = { 235, 85,  85,  255 };
-static const Color COL_BTN        = { 55,  100, 190, 255 };
-static const Color COL_BTN_HOVER  = { 80,  130, 220, 255 };
-static const Color COL_BTN_OFF    = { 50,  55,  66,  255 };
-static const Color COL_TAB_ON     = { 36,  70, 120, 255 };
-static const Color COL_TAB_OFF    = { 34,  40,  52, 255 };
-static const Color COL_TAB_HOVER  = { 50,  58,  74, 255 };
-static const Color COL_MAP_BG     = { 10,  14,  20, 255 };
-static const Color COL_WORLD      = { 20,  31,  44, 255 };
-static const Color COL_GRID       = { 32,  46,  64, 255 };
-static const Color COL_GRID_MAJOR = { 46,  64,  88, 255 };
-static const Color COL_LOCATION   = { 110, 130, 165, 255 };
-static const Color COL_BATT_BG    = { 40,  46,  58, 255 };
-static const Color COL_BORDER     = { 90,  98,  112, 255 };
+// Backgrounds
+static const Color COL_BG         = {   2,   6,   4, 255 };  // near-black, green tint
+static const Color COL_PANEL      = {   5,  16,   9, 255 };  // dark terminal panel
+static const Color COL_PANEL_ALT  = {   8,  22,  12, 255 };  // zebra-stripe row
+static const Color COL_SEL        = {   0,  55,  22, 255 };  // selected row
+static const Color COL_HOVER      = {  12,  38,  20, 255 };  // hover row
+
+// Text
+static const Color COL_TEXT       = { 100, 255, 140, 255 };  // primary phosphor green
+static const Color COL_DIM        = {  60, 160,  85, 255 };  // secondary
+static const Color COL_GREY       = {  35,  85,  50, 255 };  // inactive / dead
+
+// Accents and status
+static const Color COL_ACCENT     = {   0, 255,  65, 255 };  // pure Matrix green
+static const Color COL_GOOD       = {   0, 230,  80, 255 };
+static const Color COL_WARN       = { 235, 180,  40, 255 };  // amber
+static const Color COL_BAD        = { 235,  70,  70, 255 };  // red
+
+// Buttons
+static const Color COL_BTN        = {   0,  50,  22, 255 };
+static const Color COL_BTN_HOVER  = {   0,  95,  42, 255 };
+static const Color COL_BTN_OFF    = {  14,  24,  17, 255 };
+
+// Tabs
+static const Color COL_TAB_ON     = {   0,  60,  28, 255 };
+static const Color COL_TAB_OFF    = {   5,  14,   8, 255 };
+static const Color COL_TAB_HOVER  = {  10,  30,  16, 255 };
+
+// Map
+static const Color COL_MAP_BG     = {   0,   3,   1, 255 };
+static const Color COL_WORLD      = {   3,  14,   7, 255 };
+static const Color COL_GRID       = {   0,  35,  15, 255 };
+static const Color COL_GRID_MAJOR = {   0,  65,  25, 255 };
+static const Color COL_LOCATION   = {   0, 150,  55, 255 };
+
+// Misc
+static const Color COL_BATT_BG    = {   8,  22,  14, 255 };
+static const Color COL_BORDER     = {   0, 100,  40, 255 };
 
 // ----------------------------------------------------------------------------
 //  Formatting helpers
