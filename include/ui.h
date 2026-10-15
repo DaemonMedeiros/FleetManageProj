@@ -25,22 +25,22 @@ extern AppState g_app;
 //  Colours - "Matrix terminal" palette (phosphor green on near-black)
 // ----------------------------------------------------------------------------
 // Backgrounds
-static const Color COL_BG         = {   2,   6,   4, 255 };  // near-black, green tint
-static const Color COL_PANEL      = {   5,  16,   9, 255 };  // dark terminal panel
-static const Color COL_PANEL_ALT  = {   8,  22,  12, 255 };  // zebra-stripe row
-static const Color COL_SEL        = {   0,  55,  22, 255 };  // selected row
-static const Color COL_HOVER      = {  12,  38,  20, 255 };  // hover row
+static const Color COL_BG         = {   2,   6,   4, 255 };
+static const Color COL_PANEL      = {   5,  16,   9, 255 };
+static const Color COL_PANEL_ALT  = {   8,  22,  12, 255 };
+static const Color COL_SEL        = {   0,  55,  22, 255 };
+static const Color COL_HOVER      = {  12,  38,  20, 255 };
 
 // Text
-static const Color COL_TEXT       = { 100, 255, 140, 255 };  // primary phosphor green
-static const Color COL_DIM        = {  60, 160,  85, 255 };  // secondary
-static const Color COL_GREY       = {  35,  85,  50, 255 };  // inactive / dead
+static const Color COL_TEXT       = { 100, 255, 140, 255 };
+static const Color COL_DIM        = {  60, 160,  85, 255 };
+static const Color COL_GREY       = {  35,  85,  50, 255 };
 
 // Accents and status
-static const Color COL_ACCENT     = {   0, 255,  65, 255 };  // pure Matrix green
+static const Color COL_ACCENT     = {   0, 255,  65, 255 };
 static const Color COL_GOOD       = {   0, 230,  80, 255 };
-static const Color COL_WARN       = { 235, 180,  40, 255 };  // amber
-static const Color COL_BAD        = { 235,  70,  70, 255 };  // red
+static const Color COL_WARN       = { 235, 180,  40, 255 };
+static const Color COL_BAD        = { 235,  70,  70, 255 };
 
 // Buttons
 static const Color COL_BTN        = {   0,  50,  22, 255 };
@@ -77,6 +77,7 @@ const char* PriorityText(int p);
 bool Button(Rectangle r, const char* text, bool enabled = true);
 bool TabButton(Rectangle r, const char* text, bool selected);
 void DrawBatteryBar(Rectangle r, float pct, bool dim);
+void DrawConditionBar(Rectangle r, const Drone& d, bool dim);
 void Field(const char* label, const char* value, float x, float y, Color vc = COL_TEXT);
 
 void DrawHeader();          // title bar: page tabs, pause, sim speed, FPS

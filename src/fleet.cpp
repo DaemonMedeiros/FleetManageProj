@@ -35,8 +35,17 @@ const char* DispatchBlockReason(const Drone& d) {
 
 void Service(Drone& d) {
     if (d.active) return;
-    d.damage = DMG_NONE;
-    d.sw = LATEST_SW;
+    d.damage    = DMG_NONE;
+    d.condition = 100.0f;
+    d.sw        = LATEST_SW;
+}
+
+// Map continuous condition to the discrete damage label that UI colours and
+// gating logic (CanDispatch) use.
+Damage DamageFromCondition(float c) {
+    if (c >= 80.0f) return DMG_NONE;
+    if (c >= 40.0f) return DMG_MINOR;
+    return DMG_MAJOR;
 }
 
 // ----------------------------------------------------------------------------
@@ -48,10 +57,17 @@ void UpdateFleet(float simDt) {
 
         if (d.active) {
             d.speed = d.cruise;
-            MoveAlong(d, d.cruise / 3600.0f * simDt);
+            float km = d.cruise / 3600.0f * simDt;
+            MoveAlong(d, km);
 
             d.battery -= DRAIN_PER_HOUR * simDt / 3600.0f;
             if (d.battery < 0.0f) d.battery = 0.0f;
+
+            // Small continuous wear: every km flown erodes condition, and the
+            // damage label is refreshed from it so all UI / gating sees it.
+            d.condition -= DAMAGE_PER_KM * km;
+            if (d.condition < 0.0f) d.condition = 0.0f;
+            d.damage = DamageFromCondition(d.condition);
 
             d.histTimer += simDt;
             if (d.histTimer >= 60.0f) {                       // sample once per simulated minute
@@ -63,6 +79,8 @@ void UpdateFleet(float simDt) {
             if (d.nextWp >= (int)d.path.size()) Arrive(d);
         } else {
             d.speed = 0.0f;
+            // Natural trickle charge while parked.  Automation overrides this
+            // with a linear ramp during its AUTO_CHARGING task.
             d.battery += CHARGE_PER_HOUR * simDt / 3600.0f;
             if (d.battery > 100.0f) d.battery = 100.0f;
         }
@@ -115,9 +133,11 @@ void InitFleet() {
         g_fleet.push_back(d);
     }
 
-    // A few inactive drones with problems, to make the dashboard interesting
-    g_fleet[7].damage  = DMG_MINOR;
-    g_fleet[10].damage = DMG_MAJOR;
+    // A few inactive drones with problems, to make the dashboard interesting.
+    // Set the continuous condition alongside the derived damage label so both
+    // stay consistent from frame one.
+    g_fleet[7].damage  = DMG_MINOR;  g_fleet[7].condition  =  55.0f;
+    g_fleet[10].damage = DMG_MAJOR;  g_fleet[10].condition =  18.0f;
     g_fleet[9].battery = 14.0f;
     g_fleet[8].sw      = "2.2.0";
     g_fleet[11].battery = 38.0f;
@@ -126,6 +146,7 @@ void InitFleet() {
     for (int i = 0; i < 6; i++) {
         Drone& d = g_fleet[i];
         d.damage = DMG_NONE;
+        d.condition = 100.0f;
         Dispatch(d);
         d.battery = (float)GetRandomValue(45, 95);
         float total = RemainingKm(d);

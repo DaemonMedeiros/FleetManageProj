@@ -1,4 +1,4 @@
-// automation.cpp - automatic repair, recharge and mission resume for drones
+// automation.cpp - automatic repair, software update, recharge and mission resume
 #include "automation.h"
 
 #include "fleet.h"
@@ -6,17 +6,21 @@
 
 #include "raylib.h"
 
-static bool NeedsService(const Drone& d) { return d.damage != DMG_NONE || SwOutdated(d); }
-
 // True if the drone cannot finish its current route and still land with the reserve.
 static bool CannotFinishRoute(const Drone& d) {
     float needed = RemainingKm(d) / d.cruise * DRAIN_PER_HOUR;
     return d.battery - needed < AUTO_RESERVE_BATTERY;
 }
 
-static void BeginServicing(Drone& d) {
-    d.autoState = AUTO_SERVICING;
-    d.autoTimer = AUTO_SERVICE_SECONDS;
+static void BeginRepairing(Drone& d) {
+    d.autoState       = AUTO_REPAIRING;
+    d.autoTimer       = AUTO_REPAIR_SECONDS;
+    d.autoRepairStart = d.condition;     // remember entry condition so the bar ramps from here
+}
+
+static void BeginUpdating(Drone& d) {
+    d.autoState = AUTO_UPDATING;
+    d.autoTimer = AUTO_UPDATE_SECONDS;
 }
 
 static void BeginCharging(Drone& d) {
@@ -32,6 +36,9 @@ static void ResumeSavedMission(Drone& d) {
     DispatchTo(d, m.endLoc);
 }
 
+// Automation processes exactly one task per drone at a time.  When a task
+// finishes the drone returns to AUTO_IDLE, and the next tick chooses the next
+// task by priority: repair -> recharge -> update software -> auto-dispatch.
 void UpdateAutomation(float simDt, int selectedDrone) {
     for (int i = 0; i < (int)g_fleet.size(); i++) {
         Drone& d = g_fleet[i];
@@ -44,10 +51,12 @@ void UpdateAutomation(float simDt, int selectedDrone) {
                     DivertTo(d, NearestLocation(d.pos));
                     d.autoState = AUTO_DIVERTING;
                 }
-            } else if (NeedsService(d)) {
-                BeginServicing(d);
+            } else if (d.damage != DMG_NONE) {
+                BeginRepairing(d);                              // 1st priority: repair
             } else if (d.battery < AUTO_LOW_BATTERY) {
-                BeginCharging(d);
+                BeginCharging(d);                               // 2nd priority: recharge
+            } else if (SwOutdated(d)) {
+                BeginUpdating(d);                               // 3rd priority: software update
             } else if (d.battery >= MIN_DISPATCH_BATTERY && i != selectedDrone) {
                 // Healthy, idle, not being inspected -> auto-dispatch after a delay.
                 d.idleTimer += simDt;
@@ -61,26 +70,50 @@ void UpdateAutomation(float simDt, int selectedDrone) {
             break;
 
         case AUTO_DIVERTING:
-            if (!d.active) BeginServicing(d);          // Arrive() has parked it
+            if (!d.active) d.autoState = AUTO_IDLE;   // Arrive() parked it; next tick picks the task
             break;
 
-        case AUTO_SERVICING:
+        case AUTO_REPAIRING: {
+            d.autoTimer -= simDt;
+
+            // Ramp condition from its entry value up to 100 over the repair
+            // window.  We only commit the new value once it has grown by at
+            // least 2 % since the last commit, so the bar fills in visible
+            // chunks instead of jumping straight to 100.
+            float elapsed = AUTO_REPAIR_SECONDS - d.autoTimer;
+            float t = elapsed / AUTO_REPAIR_SECONDS;
+            if (t < 0.0f) t = 0.0f;
+            if (t > 1.0f) t = 1.0f;
+            float target = d.autoRepairStart + (100.0f - d.autoRepairStart) * t;
+            if (target - d.condition >= 2.0f) {
+                d.condition = (target > 100.0f) ? 100.0f : target;
+                d.damage    = DamageFromCondition(d.condition);
+            }
+
+            if (d.autoTimer <= 0.0f) {
+                d.condition = 100.0f;                         // ensure exact finish
+                d.damage    = DMG_NONE;
+                d.autoState = AUTO_IDLE;
+            }
+            break;
+        }
+
+        case AUTO_UPDATING:
             d.autoTimer -= simDt;
             if (d.autoTimer <= 0.0f) {
-                Service(d);                            // repairs damage + updates software
-                BeginCharging(d);
+                d.sw        = LATEST_SW;
+                d.autoState = AUTO_IDLE;
             }
             break;
 
         case AUTO_CHARGING:
-            // A linear ramp overrides the natural charge so the drone visibly
-            // fills up over the charging timer.
             d.autoTimer -= simDt;
             if (d.autoTimer <= 0.0f) {
-                d.battery = 100.0f;
+                d.battery   = 100.0f;
                 d.autoState = AUTO_IDLE;
-                ResumeSavedMission(d);
+                ResumeSavedMission(d);                // only resumes if automation diverted it
             } else {
+                // Linear ramp, visible in the battery bar.
                 float t = 1.0f - d.autoTimer / AUTO_CHARGE_SECONDS;
                 d.battery = d.autoChargeStart + (100.0f - d.autoChargeStart) * t;
             }
@@ -92,16 +125,17 @@ void UpdateAutomation(float simDt, int selectedDrone) {
 const char* AutoStateText(const Drone& d) {
     switch (d.autoState) {
     case AUTO_DIVERTING: return "Diverting to land";
-    case AUTO_SERVICING: return TextFormat("Servicing (%.0f s left)",
+    case AUTO_REPAIRING: return TextFormat("Repairing (%.0f s left)",
+                                            d.autoTimer / BASE_TIME_SCALE);
+    case AUTO_UPDATING:  return TextFormat("Updating SW (%.0f s left)",
                                             d.autoTimer / BASE_TIME_SCALE);
     case AUTO_CHARGING:
         if (d.savedMission.valid)
             return TextFormat("Charging (%.0f s, will resume)",
                               d.autoTimer / BASE_TIME_SCALE);
-        return TextFormat("Charging (%.0f s)", d.autoTimer / BASE_TIME_SCALE);
+        return TextFormat("Charging (%.0f s left)", d.autoTimer / BASE_TIME_SCALE);
     default:
-        if (!d.active && d.battery >= MIN_DISPATCH_BATTERY && d.damage == DMG_NONE
-            && !SwOutdated(d))
+        if (d.idleTimer > 0.0f)
             return TextFormat("Idle (dispatch in %.0f s)",
                               (AUTO_IDLE_DELAY - d.idleTimer) / BASE_TIME_SCALE);
         return "Idle";

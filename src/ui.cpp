@@ -48,7 +48,6 @@ bool TabButton(Rectangle r, const char* text, bool selected) {
 
     if (selected) {
         DrawRectangleLinesEx(r, 1, COL_ACCENT);
-        // thick underline accent
         DrawRectangle((int)r.x, (int)(r.y + r.height - 3), (int)r.width, 3, COL_ACCENT);
     } else if (hover) {
         DrawRectangleLinesEx(r, 1, COL_BORDER);
@@ -68,6 +67,19 @@ void DrawBatteryBar(Rectangle r, float pct, bool dim) {
     DrawRectangleLinesEx(r, 1, COL_BORDER);
 }
 
+// Same visual language as DrawBatteryBar.  Uses the continuous condition
+// percentage for the fill, and the derived damage label for the colour.
+void DrawConditionBar(Rectangle r, const Drone& d, bool dim) {
+    DrawRectangleRec(r, COL_BATT_BG);
+    Color c = DamageColor(d.damage);
+    if (dim) c = Fade(c, 0.4f);
+    float pct = d.condition;
+    if (pct < 0.0f)   pct = 0.0f;
+    if (pct > 100.0f) pct = 100.0f;
+    DrawRectangle((int)r.x, (int)r.y, (int)(r.width * pct / 100.0f), (int)r.height, c);
+    DrawRectangleLinesEx(r, 1, COL_BORDER);
+}
+
 void Field(const char* label, const char* value, float x, float y, Color vc) {
     DrawText(label, (int)x, (int)y, 16, COL_DIM);
     DrawText(value, (int)x + 126, (int)y, 16, vc);
@@ -80,15 +92,7 @@ void DrawHeader() {
     DrawRectangle(0, 0, SCREEN_W, 50, COL_PANEL);
     DrawRectangle(0, 49, SCREEN_W, 1, COL_ACCENT);
 
-    // Terminal-prompt style title with a blinking block cursor
-    const char* title = "DRONE FLEET MANAGER";
-    const int   tsize = 22;
-    DrawText(">", 16, 14, tsize, COL_ACCENT);
-    DrawText(title, 34, 14, tsize, COL_TEXT);
-    if ((int)(GetTime() * 2.0) % 2 == 0) {
-        int tw = MeasureText(title, tsize);
-        DrawRectangle(34 + tw + 6, 18, 12, 18, COL_ACCENT);
-    }
+    DrawText("DRONE FLEET MANAGER", 16, 14, 22, COL_TEXT);
 
     if (TabButton({ 330, 8, 140, 34 }, "Dashboard", g_app.page == PAGE_DASHBOARD)) g_app.page = PAGE_DASHBOARD;
     if (TabButton({ 480, 8, 140, 34 }, "Map", g_app.page == PAGE_MAP))             g_app.page = PAGE_MAP;

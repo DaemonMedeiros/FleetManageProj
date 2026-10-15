@@ -19,6 +19,7 @@ static float g_scroll = 0.0f;       // list scroll offset in pixels
 static void DrawDetailPanel() {
     const Rectangle panel = { 860, 130, 410, 580 };
     DrawRectangleRounded(panel, 0.02f, 8, COL_PANEL);
+    DrawRectangleLinesEx(panel, 1, COL_BORDER);
     if (g_fleet.empty()) return;
 
     Drone& d = g_fleet[g_app.selected];
@@ -45,9 +46,14 @@ static void DrawDetailPanel() {
     DrawText(TextFormat("%.0f%%", d.battery), (int)x + 266, (int)y, 16, BatteryColor(d.battery));
     y += STEP;
 
+    // Condition shown as a bar + percentage, matching the battery row layout
+    DrawText("Condition", (int)x, (int)y, 16, COL_DIM);
+    DrawConditionBar({ x + 126, y + 2, 130, 14 }, d, false);
+    DrawText(TextFormat("%.0f%%", d.condition), (int)x + 266, (int)y, 16, DamageColor(d.damage));
+    y += STEP;
+
     Field("Software", TextFormat("v%s%s", d.sw.c_str(), SwOutdated(d) ? "  (update available)" : "  (latest)"),
           x, y, SwOutdated(d) ? COL_WARN : COL_TEXT);                                 y += STEP;
-    Field("Condition", DamageText(d.damage), x, y, DamageColor(d.damage));            y += STEP;
     Field("Automation", AutoStateText(d), x, y);                                      y += STEP;
     Field("Priority", PriorityText(d.priority), x, y);                                y += STEP;
     Field("Position", TextFormat("(%.1f, %.1f) km", d.pos.x, d.pos.y), x, y);         y += STEP;
@@ -57,7 +63,7 @@ static void DrawDetailPanel() {
         Field(d.returning ? "Returning to" : "Destination", g_locations[d.endLoc].name.c_str(), x, y); y += STEP;
         Field("Speed", TextFormat("%.0f km/h", d.speed), x, y);                       y += STEP;
         float rem = RemainingKm(d);
-        Field("Remaining", TextFormat("%.1f km  (ETA %.0f min)", rem, rem / d.cruise * 60.0f), x, y); y += STEP;
+        Field("DTD", TextFormat("%.1f km  (ETA %.0f min)", rem, rem / d.cruise * 60.0f), x, y); y += STEP;
         Field("Path", TextFormat("%d / %d waypoints", std::max(0, d.nextWp - 1), (int)d.path.size() - 1), x, y);
     } else {
         Field("Parked at", d.locIndex >= 0 ? g_locations[d.locIndex].name.c_str() : "-", x, y); y += STEP;
@@ -96,12 +102,14 @@ void DrawDashboard() {
     for (int i = 0; i < 4; i++) {
         Rectangle r = { 10.0f + i * 210.0f, 62, 200, 56 };
         DrawRectangleRounded(r, 0.2f, 8, COL_PANEL);
+        DrawRectangleLinesEx(r, 1, COL_BORDER);
         DrawText(labels[i], (int)r.x + 12, (int)r.y + 8, 14, COL_DIM);
         DrawText(TextFormat("%d", vals[i]), (int)r.x + 12, (int)r.y + 26, 26, cols[i]);
     }
     {
         Rectangle r = { 860, 62, 410, 56 };
         DrawRectangleRounded(r, 0.2f, 8, COL_PANEL);
+        DrawRectangleLinesEx(r, 1, COL_BORDER);
         DrawText("SIMULATION", (int)r.x + 12, (int)r.y + 8, 14, COL_DIM);
         DrawText(g_app.paused ? "PAUSED" : TextFormat("Running at x%d  (1 s = %d min)", g_app.simMult,
                  (int)(BASE_TIME_SCALE * g_app.simMult / 60.0f)),
@@ -113,16 +121,17 @@ void DrawDashboard() {
     const Rectangle rowsR = { 10, 160, 840, 550 };
     const float ROW_H = 34.0f;
     DrawRectangleRounded(listR, 0.02f, 8, COL_PANEL);
+    DrawRectangleLinesEx(listR, 1, COL_BORDER);
 
     const float cx = listR.x;
-    DrawText("ID",        (int)cx + 14,  138, 14, COL_DIM);
-    DrawText("DRONE",     (int)cx + 60,  138, 14, COL_DIM);
-    DrawText("STATUS",    (int)cx + 252, 138, 14, COL_DIM);
-    DrawText("BATTERY",   (int)cx + 340, 138, 14, COL_DIM);
-    DrawText("DEST DIST", (int)cx + 480, 138, 14, COL_DIM);
-    DrawText("SPEED",     (int)cx + 565, 138, 14, COL_DIM);
-    DrawText("SOFTWARE",  (int)cx + 650, 138, 14, COL_DIM);
-    DrawText("HEALTH",    (int)cx + 740, 138, 14, COL_DIM);
+    DrawText("ID",         (int)cx + 14,  138, 14, COL_DIM);
+    DrawText("DRONE",      (int)cx + 60,  138, 14, COL_DIM);
+    DrawText("STATUS",     (int)cx + 240, 138, 14, COL_DIM);
+    DrawText("BATTERY",    (int)cx + 330, 138, 14, COL_DIM);
+    DrawText("DTD",        (int)cx + 470, 138, 14, COL_DIM);
+    DrawText("SPEED",      (int)cx + 555, 138, 14, COL_DIM);
+    DrawText("SOFTWARE",   (int)cx + 640, 138, 14, COL_DIM);
+    DrawText("CONDITION",  (int)cx + 730, 138, 14, COL_DIM);
 
     // Active drones first, then inactive (greyed out)
     std::vector<int> order;
@@ -154,21 +163,30 @@ void DrawDashboard() {
         DrawText(TextFormat("#%02d", d.id), (int)cx + 14, ty, 16, tc);
         DrawText(TextFormat("%s %s", d.make.c_str(), d.model.c_str()), (int)cx + 60, ty, 16, tc);
 
-        DrawCircle((int)cx + 258, ty + 8, 5, d.active ? COL_GOOD : COL_GREY);
-        DrawText(d.active ? "ACTIVE" : "INACTIVE", (int)cx + 270, ty, 16, d.active ? COL_GOOD : COL_GREY);
+        DrawCircle((int)cx + 246, ty + 8, 5, d.active ? COL_GOOD : COL_GREY);
+        DrawText(d.active ? "ACTIVE" : "INACTIVE", (int)cx + 258, ty, 16,
+                 d.active ? COL_GOOD : COL_GREY);
 
-        DrawBatteryBar({ cx + 340, (float)ty + 2, 70, 12 }, d.battery, !d.active);
-        DrawText(TextFormat("%.0f%%", d.battery), (int)cx + 418, ty, 16,
+        // Battery bar + %
+        DrawBatteryBar({ cx + 330, (float)ty + 2, 60, 12 }, d.battery, !d.active);
+        DrawText(TextFormat("%.0f%%", d.battery), (int)cx + 396, ty, 16,
                  d.active ? BatteryColor(d.battery) : COL_GREY);
 
-        DrawText(d.active ? TextFormat("%.1f km", RemainingKm(d)) : "--", (int)cx + 480, ty, 16, tc);
-        DrawText(TextFormat("%.0f km/h", d.speed), (int)cx + 565, ty, 16, tc);
+        // DTD + speed
+        DrawText(d.active ? TextFormat("%.1f km", RemainingKm(d)) : "--",
+                 (int)cx + 470, ty, 16, tc);
+        DrawText(TextFormat("%.0f km/h", d.speed), (int)cx + 555, ty, 16, tc);
 
+        // Software
         Color swc = SwOutdated(d) ? (d.active ? COL_WARN : Fade(COL_WARN, 0.5f)) : tc;
-        DrawText(TextFormat("v%s%s", d.sw.c_str(), SwOutdated(d) ? " !" : ""), (int)cx + 650, ty, 16, swc);
+        DrawText(TextFormat("v%s%s", d.sw.c_str(), SwOutdated(d) ? " !" : ""),
+                 (int)cx + 640, ty, 16, swc);
 
-        Color hc = d.active ? DamageColor(d.damage) : Fade(DamageColor(d.damage), 0.5f);
-        DrawText(DamageText(d.damage), (int)cx + 740, ty, 16, hc);
+        // Condition bar + % (mirrors the battery column).  Fill uses the
+        // continuous condition so it visibly ticks down during flight.
+        DrawConditionBar({ cx + 730, (float)ty + 2, 50, 12 }, d, !d.active);
+        DrawText(TextFormat("%.0f%%", d.condition), (int)cx + 786, ty, 16,
+                 d.active ? DamageColor(d.damage) : Fade(DamageColor(d.damage), 0.5f));
 
         if (hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) g_app.selected = idx;
     }

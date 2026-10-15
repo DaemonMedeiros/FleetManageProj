@@ -1,4 +1,4 @@
-// automation.h - automatic repair, recharge, mission resume and idle dispatch
+// automation.h - automatic repair, software update, recharge, resume, dispatch
 #pragma once
 
 #include "fleet.h"
@@ -10,10 +10,10 @@
 //  seconds at x1 speed (and proportionally less at higher sim multipliers).
 // ----------------------------------------------------------------------------
 constexpr float AUTO_RESERVE_BATTERY = 10.0f;                    // % that must remain on landing
-constexpr float AUTO_LOW_BATTERY     = 50.0f;                    // % below which a parked drone charges
-constexpr float AUTO_READY_BATTERY   = 80.0f;                    // % at which a charged drone can fly
-constexpr float AUTO_SERVICE_SECONDS = 15.0f * BASE_TIME_SCALE;  // repair / update duration
-constexpr float AUTO_CHARGE_SECONDS  = 15.0f * BASE_TIME_SCALE;  // charge-up duration
+constexpr float AUTO_LOW_BATTERY     = 50.0f;                    // % below which a parked drone is charged
+constexpr float AUTO_REPAIR_SECONDS  = 15.0f * BASE_TIME_SCALE;  // one repair task
+constexpr float AUTO_UPDATE_SECONDS  = 15.0f * BASE_TIME_SCALE;  // one software-update task
+constexpr float AUTO_CHARGE_SECONDS  = 15.0f * BASE_TIME_SCALE;  // one recharge task
 constexpr float AUTO_IDLE_DELAY      =  5.0f * BASE_TIME_SCALE;  // wait before auto-dispatch
 
 // Advance automation by simDt simulated seconds.  selectedDrone is the index of

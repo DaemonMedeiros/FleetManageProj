@@ -17,6 +17,7 @@ constexpr float BASE_TIME_SCALE      = 120.0f;    // simulated seconds per real 
 constexpr float DRAIN_PER_HOUR       = 20.0f;     // battery % lost per flight hour
 constexpr float CHARGE_PER_HOUR      = 60.0f;     // battery % gained per hour parked
 constexpr float MIN_DISPATCH_BATTERY = 50.0f;     // minimum battery to start a mission
+constexpr float DAMAGE_PER_KM        = 0.15f;     // condition % lost per km flown
 constexpr const char* LATEST_SW      = "2.4.0";   // newest software version
 
 // ----------------------------------------------------------------------------
@@ -24,7 +25,15 @@ constexpr const char* LATEST_SW      = "2.4.0";   // newest software version
 // ----------------------------------------------------------------------------
 enum Damage { DMG_NONE = 0, DMG_MINOR, DMG_MAJOR };
 
-enum AutoState { AUTO_IDLE = 0, AUTO_DIVERTING, AUTO_SERVICING, AUTO_CHARGING };
+// Automation does exactly one task at a time.  Repair, software update and
+// recharge are distinct states so a drone can be shown doing one thing.
+enum AutoState {
+    AUTO_IDLE = 0,
+    AUTO_DIVERTING,     // in flight, landing at the nearest location
+    AUTO_REPAIRING,     // parked, repairing damage
+    AUTO_UPDATING,      // parked, installing new software
+    AUTO_CHARGING       // parked, refilling battery
+};
 
 struct SavedMission {        // route interrupted by automation, to resume later
     bool valid    = false;
@@ -50,8 +59,9 @@ struct Drone {
     float       ageMonths = 0.0f;        // age
     float       lifetimeMonths = 60.0f;  // expected lifetime
     float       battery = 100.0f;        // %
+    float       condition = 100.0f;      // % (100 = pristine, 0 = wrecked) - source of truth
     std::string sw = "2.4.0";            // software version
-    Damage      damage = DMG_NONE;
+    Damage      damage = DMG_NONE;       // derived from condition every tick
     int         priority = 2;            // 1 = high, 2 = normal, 3 = low
 
     // --- position / motion ---
@@ -70,10 +80,11 @@ struct Drone {
     float                histTimer = 0.0f;
 
     // --- automation (owned by automation.cpp) ---
-    AutoState    autoState       = AUTO_IDLE;
-    float        autoTimer       = 0.0f;    // simulated seconds left for servicing/charging
-    float        autoChargeStart = 100.0f;  // battery at the start of an automated charge
-    float        idleTimer       = 0.0f;    // simulated seconds spent idle (for auto-dispatch)
+    AutoState    autoState        = AUTO_IDLE;
+    float        autoTimer        = 0.0f;    // simulated seconds left for current task
+    float        autoChargeStart  = 100.0f;  // battery at the start of a charge task
+    float        autoRepairStart  = 100.0f;  // condition at the start of a repair task
+    float        idleTimer        = 0.0f;    // simulated seconds spent idle (auto-dispatch delay)
     SavedMission savedMission;
 };
 
@@ -94,4 +105,7 @@ Vector2 ParkPos(const Drone& d, int loc);     // where a parked drone sits near 
 bool        SwOutdated(const Drone& d);
 bool        CanDispatch(const Drone& d);
 const char* DispatchBlockReason(const Drone& d);
-void        Service(Drone& d);                // repair + update software
+void        Service(Drone& d);                // manual: repair + update in one go
+
+// Map a continuous condition (0-100) to the discrete Damage label used by the UI.
+Damage      DamageFromCondition(float c);

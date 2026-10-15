@@ -9,8 +9,10 @@
 
 static Camera2D g_cam = {};
 
-static const Rectangle MAP_VIEW    = { 270, 60, 1000, 650 };
-static const Rectangle MAP_OVERLAY = { 280, 70, 350, 160 };
+// Map view no longer fills the whole right side: the status panel is docked
+// on the right so it never overlaps the world.
+static const Rectangle MAP_VIEW    = { 270, 60, 700, 650 };
+static const Rectangle MAP_OVERLAY = { 980, 60, 290, 650 };
 
 static Vector2 ToPx(Vector2 km) { return Vector2Scale(km, PX_PER_KM); }
 
@@ -18,7 +20,7 @@ void InitMapCamera() {
     g_cam.offset   = { MAP_VIEW.x + MAP_VIEW.width / 2, MAP_VIEW.y + MAP_VIEW.height / 2 };
     g_cam.target   = { WORLD_PX / 2, WORLD_PX / 2 };
     g_cam.rotation = 0.0f;
-    g_cam.zoom     = 0.62f;
+    g_cam.zoom     = 0.55f;
 }
 
 // ----------------------------------------------------------------------------
@@ -27,6 +29,7 @@ void InitMapCamera() {
 static void DrawMapSidebar() {
     Rectangle panel = { 10, 60, 250, 650 };
     DrawRectangleRounded(panel, 0.02f, 8, COL_PANEL);
+    DrawRectangleLinesEx(panel, 1, COL_BORDER);
     DrawText("FLEET", (int)panel.x + 14, (int)panel.y + 10, 16, COL_DIM);
 
     Vector2 m = GetMousePosition();
@@ -35,7 +38,8 @@ static void DrawMapSidebar() {
         Rectangle row = { panel.x + 6, panel.y + 36 + i * 44.0f, panel.width - 12, 42 };
         bool hover = CheckCollisionPointRec(m, row);
         Color bg = (i == g_app.selected) ? COL_SEL : (hover ? COL_HOVER : COL_PANEL_ALT);
-        DrawRectangleRounded(row, 0.15f, 6, bg);
+        DrawRectangleRec(row, bg);
+        if (i == g_app.selected) DrawRectangleLinesEx(row, 1, COL_ACCENT);
 
         Color tc = d.active ? COL_TEXT : COL_GREY;
         DrawCircle((int)row.x + 14, (int)row.y + 21, 6, d.active ? COL_GOOD : COL_GREY);
@@ -60,7 +64,7 @@ static void HandleMapInput() {
 
     Vector2 m = GetMousePosition();
     bool inMap = CheckCollisionPointRec(m, MAP_VIEW);
-    bool inOverlay = !g_fleet.empty() && CheckCollisionPointRec(m, MAP_OVERLAY);
+    bool inOverlay = CheckCollisionPointRec(m, MAP_OVERLAY);
 
     if (inMap && !inOverlay) {
         float wheel = GetMouseWheelMove();
@@ -91,47 +95,74 @@ static void HandleMapInput() {
 }
 
 // ----------------------------------------------------------------------------
-//  Overlay: selected drone summary + faster route
+//  Right-hand status panel (previously an overlay on the map)
 // ----------------------------------------------------------------------------
 static void DrawMapOverlay() {
+    DrawRectangleRounded(MAP_OVERLAY, 0.02f, 8, COL_PANEL);
+    DrawRectangleLinesEx(MAP_OVERLAY, 1, COL_BORDER);
+
     if (g_fleet.empty()) return;
     Drone& d = g_fleet[g_app.selected];
 
-    DrawRectangleRounded(MAP_OVERLAY, 0.06f, 8, Fade(BLACK, 0.78f));
-    float x = MAP_OVERLAY.x + 12, y = MAP_OVERLAY.y + 10;
+    const float x = MAP_OVERLAY.x + 14;
+    const float w = MAP_OVERLAY.width - 28;
+    float y = MAP_OVERLAY.y + 14;
 
-    DrawText(TextFormat("DRONE #%02d  -  %s", d.id, d.active ? "ACTIVE" : "INACTIVE"), (int)x, (int)y, 18,
-             d.active ? COL_GOOD : COL_DIM);
-    y += 28;
+    DrawText("SELECTED DRONE", (int)x, (int)y, 12, COL_DIM);          y += 18;
+    DrawText(TextFormat("DRONE #%02d", d.id), (int)x, (int)y, 22, COL_TEXT); y += 28;
+    DrawText(d.active ? "ACTIVE" : "INACTIVE", (int)x, (int)y, 16,
+             d.active ? COL_GOOD : COL_GREY);                          y += 22;
+
+    DrawRectangle((int)x, (int)y, (int)w, 1, COL_BORDER);              y += 12;
+
+    // Identity
+    DrawText("MODEL", (int)x, (int)y, 12, COL_DIM);                    y += 16;
+    DrawText(TextFormat("%s %s", d.make.c_str(), d.model.c_str()), (int)x, (int)y, 14, COL_TEXT);
+    y += 24;
+
+    // Battery
+    DrawText("BATTERY", (int)x, (int)y, 12, COL_DIM);                  y += 16;
+    DrawBatteryBar({ x, y, w, 14 }, d.battery, false);                 y += 20;
+    DrawText(TextFormat("%.0f%%", d.battery), (int)x, (int)y, 14, BatteryColor(d.battery));
+    y += 24;
+
+    DrawRectangle((int)x, (int)y, (int)w, 1, COL_BORDER);              y += 12;
 
     if (d.active) {
-        DrawText(TextFormat("%s -> %s", g_locations[d.startLoc].name.c_str(), g_locations[d.endLoc].name.c_str()),
-                 (int)x, (int)y, 14, COL_TEXT);
-        y += 20;
+        DrawText("FROM", (int)x, (int)y, 12, COL_DIM);                 y += 16;
+        DrawText(g_locations[d.startLoc].name.c_str(), (int)x, (int)y, 14, COL_TEXT); y += 20;
+        DrawText("TO", (int)x, (int)y, 12, COL_DIM);                   y += 16;
+        DrawText(g_locations[d.endLoc].name.c_str(), (int)x, (int)y, 14, COL_TEXT);   y += 26;
+
         float rem = RemainingKm(d);
-        DrawText(TextFormat("Remaining %.1f km | ETA %.0f min | %.0f km/h", rem, rem / d.cruise * 60.0f, d.speed),
-                 (int)x, (int)y, 14, COL_TEXT);
-        y += 20;
-        DrawText(TextFormat("Battery %.0f%% | Waypoints %d", d.battery, (int)d.path.size() - 1),
-                 (int)x, (int)y, 14, BatteryColor(d.battery));
-        y += 24;
+        DrawText(TextFormat("Speed       %4.0f km/h", d.speed), (int)x, (int)y, 14, COL_TEXT); y += 18;
+        DrawText(TextFormat("Remaining   %4.1f km",   rem),     (int)x, (int)y, 14, COL_TEXT); y += 18;
+        DrawText(TextFormat("ETA         %4.0f min",  rem / d.cruise * 60.0f),
+                 (int)x, (int)y, 14, COL_TEXT);                    y += 18;
+        DrawText(TextFormat("Waypoints   %4d", (int)d.path.size() - 1),
+                 (int)x, (int)y, 14, COL_TEXT);                    y += 26;
 
         float direct = Vector2Distance(d.pos, g_locations[d.endLoc].pos);
         float saving = rem - direct;
         if (saving > 0.1f) {
-            DrawText(TextFormat("Faster route: -%.1f km (%.0f%%)", saving, saving / rem * 100.0f),
-                     (int)x, (int)y, 14, COL_WARN);
-            if (Button({ x, y + 20, 200, 28 }, "Apply faster route")) ApplyFasterRoute(d);
+            DrawText(TextFormat("Faster route: -%.1f km", saving), (int)x, (int)y, 14, COL_WARN); y += 18;
+            DrawText(TextFormat("              (%.0f%%)", saving / rem * 100.0f),
+                     (int)x, (int)y, 14, COL_WARN);                y += 22;
+            if (Button({ x, y, w, 30 }, "Apply faster route")) ApplyFasterRoute(d);
         } else {
             DrawText("Current route is optimal", (int)x, (int)y, 14, COL_GOOD);
         }
     } else {
-        DrawText(TextFormat("Parked at %s", d.locIndex >= 0 ? g_locations[d.locIndex].name.c_str() : "-"),
-                 (int)x, (int)y, 14, COL_TEXT);
-        y += 20;
-        DrawText(TextFormat("Battery %.0f%%", d.battery), (int)x, (int)y, 14, BatteryColor(d.battery));
-        y += 24;
-        if (Button({ x, y + 4, 200, 28 }, "Dispatch", CanDispatch(d))) Dispatch(d);
+        DrawText("PARKED AT", (int)x, (int)y, 12, COL_DIM);            y += 16;
+        DrawText(d.locIndex >= 0 ? g_locations[d.locIndex].name.c_str() : "-",
+                 (int)x, (int)y, 14, COL_TEXT);                        y += 26;
+
+        DrawText(TextFormat("Condition   %s", DamageText(d.damage)),
+                 (int)x, (int)y, 14, DamageColor(d.damage));           y += 18;
+        DrawText(TextFormat("Software    v%s", d.sw.c_str()), (int)x, (int)y, 14,
+                 SwOutdated(d) ? COL_WARN : COL_TEXT);                 y += 26;
+
+        if (Button({ x, y, w, 30 }, "Dispatch", CanDispatch(d))) Dispatch(d);
     }
 }
 
@@ -230,7 +261,7 @@ void DrawMap() {
     float bx = MAP_VIEW.x + 14, by = MAP_VIEW.y + MAP_VIEW.height - 26;
     DrawRectangle((int)bx, (int)by, (int)barLen, 3, RAYWHITE);
     DrawText("5 km", (int)bx, (int)by - 18, 14, RAYWHITE);
-    const char* help = "Drag: pan   |   Wheel: zoom   |   Click drone: select";
+    const char* help = "Drag: pan  |  Wheel: zoom  |  Click drone: select";
     DrawText(help, (int)(MAP_VIEW.x + MAP_VIEW.width - MeasureText(help, 14) - 12),
              (int)(MAP_VIEW.y + MAP_VIEW.height - 24), 14, COL_DIM);
 
