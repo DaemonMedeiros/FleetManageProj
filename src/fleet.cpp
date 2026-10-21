@@ -80,10 +80,8 @@ void UpdateFleet(float simDt) {
             if (d.nextWp >= (int)d.path.size()) Arrive(d);
         } else {
             d.speed = 0.0f;
-            // Natural trickle charge while parked.  Automation overrides this
-            // with a linear ramp during its AUTO_CHARGING task.
-            d.battery += CHARGE_PER_HOUR * simDt / 3600.0f;
-            if (d.battery > 100.0f) d.battery = 100.0f;
+            // Charging of parked drones is handled entirely by automation.cpp
+            // so the autoRecharge switch has a visible effect.
         }
     }
 }
@@ -138,8 +136,7 @@ void InitFleet() {
         d.sw = versions[GetRandomValue(0, 3)];
         d.priority = GetRandomValue(1, 3);
         d.battery = (float)GetRandomValue(60, 100);
-        // Every drone starts parked at the Drone Facility so it launches from
-        // there and, with autoReturn enabled, returns there after each mission.
+        // Every drone starts parked at the Drone Facility.
         d.locIndex = hqIndex;
         d.pos = ParkPos(d, d.locIndex);
         g_fleet.push_back(d);
@@ -153,13 +150,24 @@ void InitFleet() {
     g_fleet[11].battery = 38.0f;
 
     // First six drones start out mid-mission from the Drone Facility.
+    // Seed a remembered destination so that with randomizeDestination OFF
+    // their future auto-launches have something to repeat.
     for (int i = 0; i < 6; i++) {
         Drone& d = g_fleet[i];
         d.damage = DMG_NONE;
         d.condition = 100.0f;
-        Dispatch(d);
+        Dispatch(d);                                // records lastDestLoc
         d.battery = (float)GetRandomValue(45, 95);
         float total = RemainingKm(d);
         MoveAlong(d, total * GetRandomValue(10, 80) / 100.0f);
+    }
+
+    // Give the still-parked drones a lastDestLoc too, so the "remember the
+    // previous destination" mode has something to replay the first time.
+    for (int i = 6; i < COUNT; i++) {
+        Drone& d = g_fleet[i];
+        int end;
+        do { end = GetRandomValue(1, (int)g_locations.size() - 1); } while (end == hqIndex);
+        d.lastDestLoc = end;
     }
 }

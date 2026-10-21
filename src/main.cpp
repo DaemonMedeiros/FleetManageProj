@@ -23,7 +23,6 @@ int main() {
     while (!WindowShouldClose()) {
         // ---- input ----
         if (IsKeyPressed(KEY_TAB)) {
-            // Cycle through the three pages.
             g_app.page = (Page)((int)(g_app.page + 1) % 3);
         }
         if (IsKeyPressed(KEY_ONE))   g_app.page = PAGE_DASHBOARD;
@@ -31,15 +30,15 @@ int main() {
         if (IsKeyPressed(KEY_THREE)) g_app.page = PAGE_SETTINGS;
         if (IsKeyPressed(KEY_SPACE)) g_app.paused = !g_app.paused;
         if (IsKeyPressed(KEY_A)) {
-            g_app.automation = !g_app.automation;
-            if (!g_app.automation) ReleaseAllFromAutomation();
+            g_app.settings.enabled = !g_app.settings.enabled;
+            if (!g_app.settings.enabled) ReleaseAllFromAutomation();
         }
 
         // ---- simulation ----
         if (!g_app.paused) {
             float dt = GetFrameTime() * BASE_TIME_SCALE * (float)g_app.simMult;
             UpdateFleet(dt);
-            if (g_app.automation) UpdateAutomation(dt, g_app.selected);
+            if (g_app.settings.enabled) UpdateAutomation(dt, g_app.selected);
         }
 
         // ---- draw ----

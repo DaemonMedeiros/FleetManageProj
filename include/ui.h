@@ -12,23 +12,24 @@ constexpr int SCREEN_H = 720;
 
 enum Page { PAGE_DASHBOARD = 0, PAGE_MAP, PAGE_SETTINGS };
 
-// Per-task automation toggles + auto-return + destination behaviour.
-// Defaults preserve the previous "everything on" behaviour.
+// Per-task automation switches + auto-return + destination behaviour.
 struct Settings {
+    bool enabled              = true;   // master switch - whole automation on/off
     bool autoRepair           = true;   // automation may repair damaged drones
     bool autoRecharge         = true;   // automation may recharge low-battery drones
     bool autoUpdate           = true;   // automation may update outdated software
-    bool autoReturn           = true;   // drone flies back to its launch point after arriving
-    bool randomizeDestination = true;   // auto-dispatch idle healthy drones to a random location
+    bool autoLaunch           = true;   // launch docked, healthy drones from the Drone Facility
+    bool randomizeDestination = true;   // pick a fresh random destination on each launch
+                                        // (OFF = re-use the drone's previous destination)
+    bool autoReturn           = true;   // return to the Drone Facility after arriving
 };
 
 struct AppState {
-    Page     page     = PAGE_DASHBOARD;
-    int      selected = 0;             // index into g_fleet
-    int      selectedLoc = -1;         // index into g_locations, -1 = none
-    bool     paused   = false;
-    int      simMult  = 1;             // simulation speed multiplier (1, 2, 4)
-    bool     automation = true;        // master automation on/off
+    Page     page        = PAGE_DASHBOARD;
+    int      selected    = 0;             // index into g_fleet, -1 = none
+    int      selectedLoc = -1;            // index into g_locations, -1 = none
+    bool     paused      = false;
+    int      simMult     = 1;             // simulation speed multiplier (1, 2, 4)
     Settings settings;
 };
 extern AppState g_app;

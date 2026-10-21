@@ -1,11 +1,14 @@
-// automation.cpp - automatic repair, software update, recharge and mission resume
+// automation.cpp - automatic repair, software update, recharge, launch and return
 #include "automation.h"
 
 #include "fleet.h"
 #include "routing.h"
-#include "ui.h"        // g_app.settings, g_app.automation
+#include "ui.h"        // g_app.settings
 
 #include "raylib.h"
+
+// The Drone Facility is always location 0 in g_locations.
+static constexpr int FACILITY = 0;
 
 // True if the drone cannot finish its current route and still land with the reserve.
 static bool CannotFinishRoute(const Drone& d) {
@@ -37,18 +40,43 @@ static void ResumeSavedMission(Drone& d) {
     DispatchTo(d, m.endLoc);
 }
 
+// A drone is "ready to launch" when it is parked at the Drone Facility, has
+// no active task, no damage, no outdated software, sufficient battery, and
+// has at least one destination to fly to.
+static bool ReadyToLaunch(const Drone& d) {
+    return !d.active
+        && d.autoState == AUTO_IDLE
+        && d.locIndex == FACILITY
+        && d.damage == DMG_NONE
+        && !SwOutdated(d)
+        && d.battery >= MIN_DISPATCH_BATTERY;
+}
+
 // Automation processes exactly one task per drone at a time.  When a task
 // finishes the drone returns to AUTO_IDLE, and the next tick chooses the next
-// task by priority: repair -> recharge -> update software -> auto-dispatch.
+// task by priority:
 //
-// The individual task toggles live in g_app.settings.  When a toggle is OFF
-// the drone is not queued for that task; it simply parks in AUTO_IDLE (which
-// also unlocks the manual Dispatch button on the dashboard).
+//   repair -> recharge -> update software -> auto-launch
+//
+// Every task is gated on its own Settings switch.  The master switch is
+// checked by the caller (main.cpp) so we do not re-check it here.
+//
+// autoLaunch is the ONLY thing that starts a mission from automation.
+// randomizeDestination only decides the destination:
+//   - ON  : pick a fresh random location (excluding the facility)
+//   - OFF : re-use d.lastDestLoc (with a random fallback if unset)
 void UpdateAutomation(float simDt, int selectedDrone) {
     const Settings& cfg = g_app.settings;
 
     for (int i = 0; i < (int)g_fleet.size(); i++) {
         Drone& d = g_fleet[i];
+
+        // Passive trickle charge while parked - gated on the recharge switch.
+        if (!d.active && cfg.autoRecharge) {
+            d.battery += CHARGE_PER_HOUR * simDt / 3600.0f;
+            if (d.battery > 100.0f) d.battery = 100.0f;
+        }
+
         switch (d.autoState) {
         case AUTO_IDLE:
             if (d.active) {
@@ -58,22 +86,40 @@ void UpdateAutomation(float simDt, int selectedDrone) {
                     DivertTo(d, NearestLocation(d.pos));
                     d.autoState = AUTO_DIVERTING;
                 }
-            } else if (cfg.autoRepair && d.damage != DMG_NONE) {
-                BeginRepairing(d);                              // 1st priority: repair
+                break;
+            }
+
+            // Parked: priority 1 repair, 2 recharge, 3 update.
+            if (cfg.autoRepair && d.damage != DMG_NONE) {
+                BeginRepairing(d);
             } else if (cfg.autoRecharge && d.battery < AUTO_LOW_BATTERY) {
-                BeginCharging(d);                               // 2nd priority: recharge
+                BeginCharging(d);
             } else if (cfg.autoUpdate && SwOutdated(d)) {
-                BeginUpdating(d);                               // 3rd priority: software update
-            } else if (cfg.randomizeDestination
-                       && d.battery >= MIN_DISPATCH_BATTERY
-                       && d.damage == DMG_NONE
-                       && !SwOutdated(d)
-                       && i != selectedDrone) {
-                // Healthy, idle, not being inspected -> auto-dispatch after a delay.
+                BeginUpdating(d);
+            } else if (cfg.autoLaunch
+                       && i != selectedDrone
+                       && ReadyToLaunch(d)) {
+                // Docked at the facility, healthy - wait the usual idle delay,
+                // then launch to either a fresh random location or the same
+                // destination as last time.
                 d.idleTimer += simDt;
                 if (d.idleTimer >= AUTO_IDLE_DELAY) {
                     d.idleTimer = 0.0f;
-                    Dispatch(d);
+
+                    int dest = -1;
+                    if (cfg.randomizeDestination) {
+                        do {
+                            dest = GetRandomValue(0, (int)g_locations.size() - 1);
+                        } while (dest == FACILITY);
+                    } else if (d.lastDestLoc >= 0 && d.lastDestLoc != FACILITY) {
+                        dest = d.lastDestLoc;
+                    } else {
+                        do {
+                            dest = GetRandomValue(0, (int)g_locations.size() - 1);
+                        } while (dest == FACILITY);
+                    }
+
+                    if (dest >= 0) DispatchTo(d, dest);
                 }
             } else {
                 d.idleTimer = 0.0f;
@@ -81,16 +127,12 @@ void UpdateAutomation(float simDt, int selectedDrone) {
             break;
 
         case AUTO_DIVERTING:
-            if (!d.active) d.autoState = AUTO_IDLE;   // Arrive() parked it; next tick picks the task
+            if (!d.active) d.autoState = AUTO_IDLE;
             break;
 
         case AUTO_REPAIRING: {
             d.autoTimer -= simDt;
 
-            // Ramp condition from its entry value up to 100 over the repair
-            // window.  We only commit the new value once it has grown by at
-            // least 2 % since the last commit, so the bar fills in visible
-            // chunks instead of jumping straight to 100.
             float elapsed = AUTO_REPAIR_SECONDS - d.autoTimer;
             float t = elapsed / AUTO_REPAIR_SECONDS;
             if (t < 0.0f) t = 0.0f;
@@ -146,7 +188,7 @@ const char* AutoStateText(const Drone& d) {
         return TextFormat("Charging (%.0f s left)", d.autoTimer / BASE_TIME_SCALE);
     default:
         if (d.idleTimer > 0.0f)
-            return TextFormat("Idle (dispatch in %.0f s)",
+            return TextFormat("Idle (launch in %.0f s)",
                               (AUTO_IDLE_DELAY - d.idleTimer) / BASE_TIME_SCALE);
         return "Idle";
     }

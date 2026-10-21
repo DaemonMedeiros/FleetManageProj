@@ -13,7 +13,6 @@ float RemainingKm(const Drone& d) {
     return r;
 }
 
-// Advance a drone along its path by 'km' kilometres.
 void MoveAlong(Drone& d, float km) {
     while (km > 0.0f && d.nextWp < (int)d.path.size()) {
         Vector2 t = d.path[d.nextWp];
@@ -33,11 +32,15 @@ void MoveAlong(Drone& d, float km) {
 
 // Dispatch from d.locIndex to a chosen destination.
 // Precondition: d.locIndex >= 0 and end != d.locIndex.
+//
+// Records the destination in d.lastDestLoc so a later autoLaunch with
+// randomizeDestination OFF can replay the same trip.
 void DispatchTo(Drone& d, int end) {
     int start = d.locIndex;
 
     d.startLoc = start;
     d.endLoc = end;
+    d.lastDestLoc = end;
     d.returning = false;
 
     Vector2 a = d.pos;
@@ -51,7 +54,7 @@ void DispatchTo(Drone& d, int end) {
     int wps = GetRandomValue(1, 3);
     for (int i = 1; i <= wps; i++) {
         float t = (float)i / (float)(wps + 1);
-        float jitter = GetRandomValue(-60, 60) / 10.0f;               // +-6 km sideways
+        float jitter = GetRandomValue(-60, 60) / 10.0f;
         Vector2 p = Vector2Add(Vector2Add(a, Vector2Scale(dir, t)), Vector2Scale(perp, jitter));
         p.x = Clamp(p.x, 1.0f, WORLD_KM - 1.0f);
         p.y = Clamp(p.y, 1.0f, WORLD_KM - 1.0f);
@@ -68,7 +71,8 @@ void DispatchTo(Drone& d, int end) {
     d.histTimer = 0.0f;
 }
 
-// Create a new random mission from the drone's current location.
+// Manual "Dispatch" button: pick a fresh random destination.  Does not depend
+// on any automation setting - this is the user explicitly asking for a mission.
 void Dispatch(Drone& d) {
     int n = (int)g_locations.size();
     int end;
@@ -76,7 +80,6 @@ void Dispatch(Drone& d) {
     DispatchTo(d, end);
 }
 
-// Active drone: fly straight to a location and land.
 void DivertTo(Drone& d, int loc) {
     if (!d.active || loc < 0) return;
     d.endLoc = loc;
@@ -87,13 +90,11 @@ void DivertTo(Drone& d, int loc) {
     d.nextWp = 1;
 }
 
-// Abort mission and fly back to the start address.
 void Recall(Drone& d) {
     if (!d.active || d.startLoc < 0) return;
     DivertTo(d, d.startLoc);
 }
 
-// Index of closest location, -1 if none.
 int NearestLocation(Vector2 posKm) {
     int best = -1;
     float bestDist = 0.0f;
@@ -104,7 +105,6 @@ int NearestLocation(Vector2 posKm) {
     return best;
 }
 
-// Replace the remaining route with a direct line to the destination.
 void ApplyFasterRoute(Drone& d) {
     if (!d.active || d.endLoc < 0) return;
     d.path.clear();
@@ -113,12 +113,12 @@ void ApplyFasterRoute(Drone& d) {
     d.nextWp = 1;
 }
 
+// Arrive - park at the destination, and if autoReturn is on, immediately
+// dispatch back to the Drone Facility (which is every drone's startLoc).
+// Damage and battery drain during the return leg are handled by UpdateFleet.
 void Arrive(Drone& d) {
-    // Capture the mission so we know where the drone came from and where it
-    // landed.  If auto-return is on and the drone is not already on a return
-    // leg, we immediately dispatch it back to the launch point.
-    const int landedAt  = d.endLoc;
-    const int launchAt  = d.startLoc;
+    const int landedAt      = d.endLoc;
+    const int launchAt      = d.startLoc;
     const bool wasReturning = d.returning;
 
     d.active    = false;
@@ -129,14 +129,16 @@ void Arrive(Drone& d) {
     d.nextWp    = 0;
     d.returning = false;
 
+    // Facility index is always location 0.
+    const int FACILITY = 0;
+
     if (g_app.settings.autoReturn
         && !wasReturning
         && launchAt >= 0
-        && launchAt != landedAt
+        && landedAt != launchAt
         && d.damage != DMG_MAJOR) {
-        // Reverse the mission: parked at the destination, heading back to launch.
-        // DispatchTo re-activates the drone so UpdateFleet keeps draining
-        // battery and applying wear during the return leg.
-        DispatchTo(d, launchAt);
+        // Set startLoc back to FACILITY so the return leg is "destination -> facility".
+        d.startLoc = FACILITY;
+        DispatchTo(d, FACILITY);
     }
 }

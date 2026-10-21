@@ -59,7 +59,7 @@ struct Drone {
     float       ageMonths = 0.0f;        // age
     float       lifetimeMonths = 60.0f;  // expected lifetime
     float       battery = 100.0f;        // %
-    float       condition = 100.0f;      // % (100 = pristine, 0 = wrecked) - source of truth
+    float       condition = 100.0f;      // % (100 = pristine, 0 = wrecked)
     std::string sw = "2.4.0";            // software version
     Damage      damage = DMG_NONE;       // derived from condition every tick
     int         priority = 2;            // 1 = high, 2 = normal, 3 = low
@@ -71,7 +71,7 @@ struct Drone {
     int         locIndex = -1;           // where it is parked (-1 = in flight)
 
     // --- path ---
-    int                  startLoc = -1;  // start address
+    int                  startLoc = -1;  // start address (always the facility for auto-launched missions)
     int                  endLoc = -1;    // end address
     bool                 returning = false;
     std::vector<Vector2> path;           // list of position vectors (route data)
@@ -86,6 +86,10 @@ struct Drone {
     float        autoRepairStart  = 100.0f;  // condition at the start of a repair task
     float        idleTimer        = 0.0f;    // simulated seconds spent idle (auto-dispatch delay)
     SavedMission savedMission;
+
+    // Remembered destination from the previous mission.  Used by autoLaunch
+    // when randomizeDestination is OFF: the drone re-uses this destination.
+    int          lastDestLoc      = -1;
 };
 
 // ----------------------------------------------------------------------------

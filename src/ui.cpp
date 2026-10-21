@@ -86,7 +86,9 @@ void Field(const char* label, const char* value, float x, float y, Color vc) {
 }
 
 // ----------------------------------------------------------------------------
-//  Header
+//  Header - title, tabs, pause, sim speed.  The master automation toggle has
+//  moved to the Settings page so it can sit alongside the other automation
+//  switches where users actually look for it.
 // ----------------------------------------------------------------------------
 void DrawHeader() {
     DrawRectangle(0, 0, SCREEN_W, 50, COL_PANEL);
@@ -97,11 +99,6 @@ void DrawHeader() {
     if (TabButton({ 330, 8, 140, 34 }, "Dashboard", g_app.page == PAGE_DASHBOARD)) g_app.page = PAGE_DASHBOARD;
     if (TabButton({ 480, 8, 140, 34 }, "Map",       g_app.page == PAGE_MAP))       g_app.page = PAGE_MAP;
     if (TabButton({ 630, 8, 140, 34 }, "Settings",  g_app.page == PAGE_SETTINGS))  g_app.page = PAGE_SETTINGS;
-
-    if (Button({ 790, 8, 130, 34 }, g_app.automation ? "Auto: ON" : "Auto: OFF")) {
-        g_app.automation = !g_app.automation;
-        if (!g_app.automation) ReleaseAllFromAutomation();
-    }
 
     if (Button({ (float)SCREEN_W - 330, 8, 100, 34 }, g_app.paused ? "Resume" : "Pause")) g_app.paused = !g_app.paused;
     if (Button({ (float)SCREEN_W - 220, 8, 100, 34 }, TextFormat("Sim x%d", g_app.simMult))) {
