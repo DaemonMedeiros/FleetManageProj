@@ -16,7 +16,6 @@ static Vector2 ToScreen(Vector2 km) {
 }
 
 void InitMapCamera() {
-    // Kept so the rest of the project does not need a wider interface change.
     InitOsmMap();
 }
 
@@ -52,39 +51,57 @@ static void DrawMapSidebar() {
                  (int)(row.x + row.width - 44), (int)row.y + 6, 14,
                  d.active ? BatteryColor(d.battery) : COL_GREY);
 
-        if (hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) g_app.selected = i;
-    }
-}
-
-// ----------------------------------------------------------------------------
-//  Map picking
-// ----------------------------------------------------------------------------
-static void HandleDronePick() {
-    Vector2 m = GetMousePosition();
-    if (!CheckCollisionPointRec(m, MAP_VIEW)) return;
-    if (!IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) return;
-
-    // If the release follows an actual map drag, UpdateOsmMap consumed the
-    // navigation. A simple click can still select the nearest drone.
-    float best = 18.0f;
-    for (int i = 0; i < (int)g_fleet.size(); i++) {
-        Vector2 s = ToScreen(g_fleet[i].pos);
-        float dist = Vector2Distance(s, m);
-        if (dist < best) {
-            best = dist;
-            g_app.selected = i;
+        if (hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            g_app.selected    = i;
+            g_app.selectedLoc = -1;   // picking a drone clears the location panel
         }
     }
 }
 
 // ----------------------------------------------------------------------------
-//  Right-hand status panel
+//  Map picking (drones first, then location markers)
 // ----------------------------------------------------------------------------
-static void DrawMapOverlay() {
-    DrawRectangleRounded(MAP_OVERLAY, 0.02f, 8, COL_PANEL);
-    DrawRectangleLinesEx(MAP_OVERLAY, 1, COL_BORDER);
+static void HandleMapPicking() {
+    Vector2 m = GetMousePosition();
+    if (!CheckCollisionPointRec(m, MAP_VIEW)) return;
+    if (!IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) return;
 
-    if (g_fleet.empty()) return;
+    // Prefer a nearby drone hit (small radius) over a location hit.
+    float best = 18.0f;
+    int   bestDrone = -1;
+    for (int i = 0; i < (int)g_fleet.size(); i++) {
+        const Drone& d = g_fleet[i];
+        if (!d.active) continue;                      // inactive drones are not drawn
+        Vector2 s = ToScreen(d.pos);
+        float dist = Vector2Distance(s, m);
+        if (dist < best) { best = dist; bestDrone = i; }
+    }
+    if (bestDrone >= 0) {
+        g_app.selected    = bestDrone;
+        g_app.selectedLoc = -1;
+        return;
+    }
+
+    // Otherwise check for a location marker hit.
+    float bestLocDist = 12.0f;
+    int   bestLoc = -1;
+    for (int i = 0; i < (int)g_locations.size(); i++) {
+        Vector2 s = ToScreen(g_locations[i].pos);
+        float dist = Vector2Distance(s, m);
+        if (dist < bestLocDist) { bestLocDist = dist; bestLoc = i; }
+    }
+    if (bestLoc >= 0) {
+        g_app.selectedLoc = bestLoc;
+        // A location panel takes over the overlay, so clear any "drone selected"
+        // highlight to avoid a stale highlight ring on the map.
+        g_app.selected    = -1;
+    }
+}
+
+// ----------------------------------------------------------------------------
+//  Right-hand status panel: drone detail (default) or location panel
+// ----------------------------------------------------------------------------
+static void DrawDroneOverlay() {
     Drone& d = g_fleet[g_app.selected];
 
     const float x = MAP_OVERLAY.x + 14;
@@ -147,6 +164,120 @@ static void DrawMapOverlay() {
     }
 }
 
+// Location panel: lists every drone parked at the selected location, with a
+// per-drone Dispatch button and a "Dispatch all" button at the top.
+static void DrawLocationOverlay() {
+    const int loc = g_app.selectedLoc;
+    if (loc < 0 || loc >= (int)g_locations.size()) return;
+
+    const Location& L = g_locations[loc];
+    const float x = MAP_OVERLAY.x + 14;
+    const float w = MAP_OVERLAY.width - 28;
+    float y = MAP_OVERLAY.y + 14;
+
+    DrawText("SELECTED LOCATION", (int)x, (int)y, 12, COL_DIM); y += 18;
+    DrawText(L.name.c_str(), (int)x, (int)y, 22, COL_TEXT); y += 30;
+
+    DrawRectangle((int)x, (int)y, (int)w, 1, COL_BORDER); y += 12;
+
+    // Collect every drone parked here.
+    std::vector<int> here;
+    int dispatchable = 0;
+    for (int i = 0; i < (int)g_fleet.size(); i++) {
+        const Drone& d = g_fleet[i];
+        if (!d.active && d.locIndex == loc) {
+            here.push_back(i);
+            if (CanDispatch(d)) dispatchable++;
+        }
+    }
+
+    DrawText(TextFormat("Docked: %d   Dispatchable: %d", (int)here.size(), dispatchable),
+             (int)x, (int)y, 14, COL_DIM); y += 22;
+
+    // "Dispatch all" is only enabled when at least one drone is dispatchable.
+    if (Button({ x, y, w, 30 }, "Dispatch all", dispatchable > 0)) {
+        for (int idx : here) {
+            Drone& d = g_fleet[idx];
+            if (CanDispatch(d)) Dispatch(d);
+        }
+    }
+    y += 38;
+
+    DrawRectangle((int)x, (int)y, (int)w, 1, COL_BORDER); y += 12;
+
+    if (here.empty()) {
+        DrawText("No drones docked here.", (int)x, (int)y, 14, COL_GREY);
+        return;
+    }
+
+    // Scrollable per-drone list.
+    static float s_locScroll = 0.0f;
+    const float rowH = 40.0f;
+    const float listTop = y;
+    const float listH   = MAP_OVERLAY.y + MAP_OVERLAY.height - listTop - 14;
+
+    Vector2 mouse = GetMousePosition();
+    Rectangle listRect = { x, listTop, w, listH };
+    if (CheckCollisionPointRec(mouse, listRect))
+        s_locScroll -= GetMouseWheelMove() * 30.0f;
+    float maxScroll = std::max(0.0f, here.size() * rowH - listH);
+    s_locScroll = Clamp(s_locScroll, 0.0f, maxScroll);
+
+    BeginScissorMode((int)listRect.x, (int)listRect.y,
+                     (int)listRect.width, (int)listRect.height);
+
+    for (int k = 0; k < (int)here.size(); k++) {
+        const int idx = here[k];
+        Drone& d = g_fleet[idx];
+
+        float ry = listTop + k * rowH - s_locScroll;
+        if (ry + rowH < listTop || ry > listTop + listH) continue;
+
+        Rectangle row = { x, ry, w, rowH - 4 };
+        bool hover = CheckCollisionPointRec(mouse, row) &&
+                     CheckCollisionPointRec(mouse, listRect);
+        if (hover) { g_app.selected = idx; g_app.selectedLoc = -1; /* handled below */ }
+
+        DrawRectangleRec(row, (idx == g_app.selected) ? COL_SEL
+                              : (hover ? COL_HOVER : COL_PANEL_ALT));
+        DrawRectangleLinesEx(row, 1, COL_BORDER);
+
+        DrawText(TextFormat("#%02d", d.id), (int)row.x + 6, (int)row.y + 4, 14, COL_TEXT);
+        DrawText(TextFormat("%s %s", d.make.c_str(), d.model.c_str()),
+                 (int)row.x + 40, (int)row.y + 4, 13, COL_TEXT);
+
+        // Right-hand dispatch button.
+        Rectangle btn = { row.x + row.width - 86, row.y + 5, 78, 26 };
+        bool can = CanDispatch(d);
+        if (Button(btn, "Dispatch", can)) Dispatch(d);
+
+        // Small status line under the model.
+        Color st = DamageColor(d.damage);
+        DrawText(TextFormat("B %.0f%%  C %.0f%%  v%s",
+                            d.battery, d.condition, d.sw.c_str()),
+                 (int)row.x + 40, (int)row.y + 21, 12, st);
+    }
+
+    EndScissorMode();
+}
+
+static void DrawMapOverlay() {
+    DrawRectangleRounded(MAP_OVERLAY, 0.02f, 8, COL_PANEL);
+    DrawRectangleLinesEx(MAP_OVERLAY, 1, COL_BORDER);
+
+    if (g_app.selectedLoc >= 0) {
+        DrawLocationOverlay();
+        return;
+    }
+    if (g_app.selected >= 0 && g_app.selected < (int)g_fleet.size()) {
+        DrawDroneOverlay();
+        return;
+    }
+
+    DrawText("Nothing selected.", (int)MAP_OVERLAY.x + 14,
+             (int)MAP_OVERLAY.y + 14, 14, COL_DIM);
+}
+
 // ----------------------------------------------------------------------------
 //  Simulation overlays
 // ----------------------------------------------------------------------------
@@ -154,13 +285,15 @@ static void DrawSimulationOverlay() {
     BeginScissorMode((int)MAP_VIEW.x, (int)MAP_VIEW.y,
                      (int)MAP_VIEW.width, (int)MAP_VIEW.height);
 
-    // Locations
-    for (const Location& l : g_locations) {
-        Vector2 p = ToScreen(l.pos);
+    // Location markers - clickable.  Draw a subtle highlight on the selected one.
+    for (int i = 0; i < (int)g_locations.size(); i++) {
+        Vector2 p = ToScreen(g_locations[i].pos);
         DrawCircleV(p, 6.0f, COL_LOCATION);
+        if (g_app.selectedLoc == i)
+            DrawRing(p, 9.0f, 12.0f, 0, 360, 32, COL_ACCENT);
     }
 
-    // Paths of other active drones
+    // Paths of active drones that are not the currently inspected one.
     for (int i = 0; i < (int)g_fleet.size(); i++) {
         const Drone& d = g_fleet[i];
         if (!d.active || i == g_app.selected) continue;
@@ -173,8 +306,8 @@ static void DrawSimulationOverlay() {
         }
     }
 
-    // Selected drone history/path
-    if (!g_fleet.empty()) {
+    // Selected drone history / path.  Skipped if no drone is selected.
+    if (g_app.selected >= 0 && g_app.selected < (int)g_fleet.size()) {
         const Drone& d = g_fleet[g_app.selected];
 
         for (size_t i = 1; i < d.history.size(); i++)
@@ -203,13 +336,16 @@ static void DrawSimulationOverlay() {
         }
     }
 
-    // Drones
+    // Drone markers - ONLY active drones.  Inactive drones are drawn in the
+    // sidebar and in the location panel, not as markers on the map.
     for (int i = 0; i < (int)g_fleet.size(); i++) {
         const Drone& d = g_fleet[i];
-        Vector2 p = ToScreen(d.pos);
-        Color c = d.active ? BatteryColor(d.battery) : COL_GREY;
+        if (!d.active) continue;
 
-        if (d.active && d.nextWp < (int)d.path.size()) {
+        Vector2 p = ToScreen(d.pos);
+        Color c = BatteryColor(d.battery);
+
+        if (d.nextWp < (int)d.path.size()) {
             Vector2 next = ToScreen(d.path[d.nextWp]);
             Vector2 dir = Vector2Normalize(Vector2Subtract(next, p));
             DrawLineEx(p, Vector2Add(p, Vector2Scale(dir, 16.0f)), 3.0f, c);
@@ -221,21 +357,21 @@ static void DrawSimulationOverlay() {
             DrawRing(p, 10.0f, 12.5f, 0, 360, 32, WHITE);
     }
 
-    // Labels
+    // Location labels
     for (const Location& l : g_locations) {
         Vector2 s = ToScreen(l.pos);
         DrawText(l.name.c_str(), (int)s.x + 10, (int)s.y - 7, 14, COL_DIM);
     }
 
+    // Active drone labels only (inactive markers are not drawn)
     for (int i = 0; i < (int)g_fleet.size(); i++) {
         const Drone& d = g_fleet[i];
+        if (!d.active) continue;
         Vector2 s = ToScreen(d.pos);
-        DrawText(TextFormat("D%02d", d.id), (int)s.x + 10, (int)s.y - 24, 14,
-                 d.active ? COL_TEXT : COL_GREY);
+        DrawText(TextFormat("D%02d", d.id), (int)s.x + 10, (int)s.y - 24, 14, COL_TEXT);
     }
 
-    // Help / current zoom
-    const char* help = TextFormat("Drag: pan  |  Wheel: OSM zoom  |  Zoom: %d", GetOsmZoom());
+    const char* help = TextFormat("Drag: pan  |  Wheel: OSM zoom  |  Click drone: select  |  Click location: dock");
     DrawRectangle((int)MAP_VIEW.x + 8, (int)(MAP_VIEW.y + MAP_VIEW.height - 29),
                   MeasureText(help, 14) + 12, 21, Fade(BLACK, 0.65f));
     DrawText(help, (int)MAP_VIEW.x + 14,
@@ -251,7 +387,7 @@ void DrawMap() {
     DrawMapSidebar();
 
     UpdateOsmMap(MAP_VIEW);
-    HandleDronePick();
+    HandleMapPicking();
 
     DrawOsmMap(MAP_VIEW);
     DrawSimulationOverlay();

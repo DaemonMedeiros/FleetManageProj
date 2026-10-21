@@ -3,6 +3,7 @@
 
 #include "fleet.h"
 #include "routing.h"
+#include "ui.h"        // g_app.settings, g_app.automation
 
 #include "raylib.h"
 
@@ -15,7 +16,7 @@ static bool CannotFinishRoute(const Drone& d) {
 static void BeginRepairing(Drone& d) {
     d.autoState       = AUTO_REPAIRING;
     d.autoTimer       = AUTO_REPAIR_SECONDS;
-    d.autoRepairStart = d.condition;     // remember entry condition so the bar ramps from here
+    d.autoRepairStart = d.condition;
 }
 
 static void BeginUpdating(Drone& d) {
@@ -39,7 +40,13 @@ static void ResumeSavedMission(Drone& d) {
 // Automation processes exactly one task per drone at a time.  When a task
 // finishes the drone returns to AUTO_IDLE, and the next tick chooses the next
 // task by priority: repair -> recharge -> update software -> auto-dispatch.
+//
+// The individual task toggles live in g_app.settings.  When a toggle is OFF
+// the drone is not queued for that task; it simply parks in AUTO_IDLE (which
+// also unlocks the manual Dispatch button on the dashboard).
 void UpdateAutomation(float simDt, int selectedDrone) {
+    const Settings& cfg = g_app.settings;
+
     for (int i = 0; i < (int)g_fleet.size(); i++) {
         Drone& d = g_fleet[i];
         switch (d.autoState) {
@@ -51,13 +58,17 @@ void UpdateAutomation(float simDt, int selectedDrone) {
                     DivertTo(d, NearestLocation(d.pos));
                     d.autoState = AUTO_DIVERTING;
                 }
-            } else if (d.damage != DMG_NONE) {
+            } else if (cfg.autoRepair && d.damage != DMG_NONE) {
                 BeginRepairing(d);                              // 1st priority: repair
-            } else if (d.battery < AUTO_LOW_BATTERY) {
+            } else if (cfg.autoRecharge && d.battery < AUTO_LOW_BATTERY) {
                 BeginCharging(d);                               // 2nd priority: recharge
-            } else if (SwOutdated(d)) {
+            } else if (cfg.autoUpdate && SwOutdated(d)) {
                 BeginUpdating(d);                               // 3rd priority: software update
-            } else if (d.battery >= MIN_DISPATCH_BATTERY && i != selectedDrone) {
+            } else if (cfg.randomizeDestination
+                       && d.battery >= MIN_DISPATCH_BATTERY
+                       && d.damage == DMG_NONE
+                       && !SwOutdated(d)
+                       && i != selectedDrone) {
                 // Healthy, idle, not being inspected -> auto-dispatch after a delay.
                 d.idleTimer += simDt;
                 if (d.idleTimer >= AUTO_IDLE_DELAY) {
@@ -91,7 +102,7 @@ void UpdateAutomation(float simDt, int selectedDrone) {
             }
 
             if (d.autoTimer <= 0.0f) {
-                d.condition = 100.0f;                         // ensure exact finish
+                d.condition = 100.0f;
                 d.damage    = DMG_NONE;
                 d.autoState = AUTO_IDLE;
             }
@@ -111,9 +122,8 @@ void UpdateAutomation(float simDt, int selectedDrone) {
             if (d.autoTimer <= 0.0f) {
                 d.battery   = 100.0f;
                 d.autoState = AUTO_IDLE;
-                ResumeSavedMission(d);                // only resumes if automation diverted it
+                ResumeSavedMission(d);
             } else {
-                // Linear ramp, visible in the battery bar.
                 float t = 1.0f - d.autoTimer / AUTO_CHARGE_SECONDS;
                 d.battery = d.autoChargeStart + (100.0f - d.autoChargeStart) * t;
             }

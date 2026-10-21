@@ -6,6 +6,7 @@
 #include "fleet.h"
 #include "map.h"
 #include "osm_map.h"
+#include "settings.h"
 #include "ui.h"
 
 #include <ctime>
@@ -21,9 +22,13 @@ int main() {
 
     while (!WindowShouldClose()) {
         // ---- input ----
-        if (IsKeyPressed(KEY_TAB)) g_app.page = (g_app.page == PAGE_DASHBOARD) ? PAGE_MAP : PAGE_DASHBOARD;
-        if (IsKeyPressed(KEY_ONE)) g_app.page = PAGE_DASHBOARD;
-        if (IsKeyPressed(KEY_TWO)) g_app.page = PAGE_MAP;
+        if (IsKeyPressed(KEY_TAB)) {
+            // Cycle through the three pages.
+            g_app.page = (Page)((int)(g_app.page + 1) % 3);
+        }
+        if (IsKeyPressed(KEY_ONE))   g_app.page = PAGE_DASHBOARD;
+        if (IsKeyPressed(KEY_TWO))   g_app.page = PAGE_MAP;
+        if (IsKeyPressed(KEY_THREE)) g_app.page = PAGE_SETTINGS;
         if (IsKeyPressed(KEY_SPACE)) g_app.paused = !g_app.paused;
         if (IsKeyPressed(KEY_A)) {
             g_app.automation = !g_app.automation;
@@ -41,8 +46,11 @@ int main() {
         BeginDrawing();
         ClearBackground(COL_BG);
         DrawHeader();
-        if (g_app.page == PAGE_DASHBOARD) DrawDashboard();
-        else                              DrawMap();
+        switch (g_app.page) {
+            case PAGE_DASHBOARD: DrawDashboard(); break;
+            case PAGE_MAP:       DrawMap();       break;
+            case PAGE_SETTINGS:  DrawSettings();  break;
+        }
         EndDrawing();
     }
 

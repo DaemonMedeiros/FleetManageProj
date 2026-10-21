@@ -1,6 +1,8 @@
 // routing.cpp - position tracking and route / path handling
 #include "routing.h"
 
+#include "ui.h"        // g_app.settings.autoReturn
+
 #include "raymath.h"
 
 float RemainingKm(const Drone& d) {
@@ -30,8 +32,7 @@ void MoveAlong(Drone& d, float km) {
 }
 
 // Dispatch from d.locIndex to a chosen destination.
-// Precondition: d.locIndex >= 0 and end != d.locIndex (otherwise the
-// perpendicular calculation below divides by zero).
+// Precondition: d.locIndex >= 0 and end != d.locIndex.
 void DispatchTo(Drone& d, int end) {
     int start = d.locIndex;
 
@@ -113,11 +114,29 @@ void ApplyFasterRoute(Drone& d) {
 }
 
 void Arrive(Drone& d) {
-    d.active = false;
-    d.speed = 0.0f;
-    d.locIndex = d.endLoc;
-    d.pos = ParkPos(d, d.locIndex);
+    // Capture the mission so we know where the drone came from and where it
+    // landed.  If auto-return is on and the drone is not already on a return
+    // leg, we immediately dispatch it back to the launch point.
+    const int landedAt  = d.endLoc;
+    const int launchAt  = d.startLoc;
+    const bool wasReturning = d.returning;
+
+    d.active    = false;
+    d.speed     = 0.0f;
+    d.locIndex  = landedAt;
+    d.pos       = ParkPos(d, d.locIndex);
     d.path.clear();
-    d.nextWp = 0;
+    d.nextWp    = 0;
     d.returning = false;
+
+    if (g_app.settings.autoReturn
+        && !wasReturning
+        && launchAt >= 0
+        && launchAt != landedAt
+        && d.damage != DMG_MAJOR) {
+        // Reverse the mission: parked at the destination, heading back to launch.
+        // DispatchTo re-activates the drone so UpdateFleet keeps draining
+        // battery and applying wear during the return leg.
+        DispatchTo(d, launchAt);
+    }
 }

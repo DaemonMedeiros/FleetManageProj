@@ -1,5 +1,6 @@
 // fleet.cpp - fleet data, initial population, and per-tick status simulation
 #include "fleet.h"
+#include "osm_map.h"          // LatLonToKm for real-world anchored locations
 #include "routing.h"
 
 #include "raymath.h"
@@ -91,15 +92,22 @@ void UpdateFleet(float simDt) {
 //  Initial fleet
 // ----------------------------------------------------------------------------
 void InitFleet() {
+    // Locations are entered as real WGS84 coordinates and converted into the
+    // 50 km simulation grid via LatLonToKm().
+    //
+    // Drone Facility  = 52°51'07.1"N 6°55'49.9"W  =  52.851972 N, -6.930528 W
+    // Other locations are approximate landmarks around Carlow town; tweak the
+    // lat/lon here if you want to move any of them.
     g_locations = {
-        { "Central Depot",     { 25.0f, 25.0f } },
-        { "Harbour Warehouse", {  7.0f, 41.0f } },
-        { "North Hospital",    { 21.0f,  6.0f } },
-        { "East Retail Park",  { 44.0f, 14.0f } },
-        { "Airport Cargo",     { 42.0f, 40.0f } },
-        { "Riverside Hub",     { 29.0f, 45.0f } },
-        { "University Campus", {  9.0f, 15.0f } },
-        { "Tech Park",         { 36.0f, 29.0f } },
+        { "Drone Facility",     LatLonToKm(52.851972, -6.930528, WORLD_KM) },
+        { "Central Depot",      LatLonToKm(52.8366,   -6.9341,   WORLD_KM) }, // town centre
+        { "Harbour Warehouse",  LatLonToKm(52.8327,   -6.9490,   WORLD_KM) }, // west, Barrow
+        { "North Hospital",     LatLonToKm(52.8562,   -6.9310,   WORLD_KM) }, // north of town
+        { "East Retail Park",   LatLonToKm(52.8395,   -6.9040,   WORLD_KM) }, // east, R448
+        { "Airport Cargo",      LatLonToKm(52.8205,   -6.9260,   WORLD_KM) }, // south
+        { "Riverside Hub",      LatLonToKm(52.8280,   -6.9300,   WORLD_KM) }, // riverside
+        { "University Campus",  LatLonToKm(52.8460,   -6.9380,   WORLD_KM) }, // west
+        { "Tech Park",          LatLonToKm(52.8430,   -6.9450,   WORLD_KM) }, // northwest
     };
 
     struct Tpl { const char* make; const char* model; const char* mfr; float load; };
@@ -115,6 +123,8 @@ void InitFleet() {
 
     g_fleet.clear();
     const int COUNT = 12;
+    const int hqIndex = 0;   // Drone Facility is the first entry above.
+
     for (int i = 0; i < COUNT; i++) {
         Drone d;
         const Tpl& t = tpls[i % 6];
@@ -128,21 +138,21 @@ void InitFleet() {
         d.sw = versions[GetRandomValue(0, 3)];
         d.priority = GetRandomValue(1, 3);
         d.battery = (float)GetRandomValue(60, 100);
-        d.locIndex = i % (int)g_locations.size();
+        // Every drone starts parked at the Drone Facility so it launches from
+        // there and, with autoReturn enabled, returns there after each mission.
+        d.locIndex = hqIndex;
         d.pos = ParkPos(d, d.locIndex);
         g_fleet.push_back(d);
     }
 
     // A few inactive drones with problems, to make the dashboard interesting.
-    // Set the continuous condition alongside the derived damage label so both
-    // stay consistent from frame one.
     g_fleet[7].damage  = DMG_MINOR;  g_fleet[7].condition  =  55.0f;
     g_fleet[10].damage = DMG_MAJOR;  g_fleet[10].condition =  18.0f;
     g_fleet[9].battery = 14.0f;
     g_fleet[8].sw      = "2.2.0";
     g_fleet[11].battery = 38.0f;
 
-    // First six drones start out mid-mission
+    // First six drones start out mid-mission from the Drone Facility.
     for (int i = 0; i < 6; i++) {
         Drone& d = g_fleet[i];
         d.damage = DMG_NONE;

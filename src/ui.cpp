@@ -95,9 +95,10 @@ void DrawHeader() {
     DrawText("DRONE FLEET MANAGER", 16, 14, 22, COL_TEXT);
 
     if (TabButton({ 330, 8, 140, 34 }, "Dashboard", g_app.page == PAGE_DASHBOARD)) g_app.page = PAGE_DASHBOARD;
-    if (TabButton({ 480, 8, 140, 34 }, "Map", g_app.page == PAGE_MAP))             g_app.page = PAGE_MAP;
+    if (TabButton({ 480, 8, 140, 34 }, "Map",       g_app.page == PAGE_MAP))       g_app.page = PAGE_MAP;
+    if (TabButton({ 630, 8, 140, 34 }, "Settings",  g_app.page == PAGE_SETTINGS))  g_app.page = PAGE_SETTINGS;
 
-    if (Button({ 640, 8, 130, 34 }, g_app.automation ? "Auto: ON" : "Auto: OFF")) {
+    if (Button({ 790, 8, 130, 34 }, g_app.automation ? "Auto: ON" : "Auto: OFF")) {
         g_app.automation = !g_app.automation;
         if (!g_app.automation) ReleaseAllFromAutomation();
     }

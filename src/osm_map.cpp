@@ -35,18 +35,6 @@ constexpr std::size_t MAX_MEMORY_TILES = 96;
 // -----------------------------------------------------------------------------
 // Carlow operating-area boundary
 // -----------------------------------------------------------------------------
-// This is deliberately a rectangular project operating area rather than an
-// administrative county/town boundary. It gives the prototype useful context
-// around Carlow while preventing accidental exploration/downloads across
-// Ireland or the rest of the world.
-//
-// Approximate extent:
-//   north: 53.02
-//   south: 52.65
-//   west : -7.22
-//   east : -6.65
-//
-// Roughly a few tens of kilometres around Carlow town.
 constexpr double AREA_NORTH = 53.02;
 constexpr double AREA_SOUTH = 52.65;
 constexpr double AREA_WEST  = -7.22;
@@ -102,6 +90,18 @@ double LatToWorldY(double lat, int zoom) {
            * 0.5 * WorldScale(zoom);
 }
 
+// Inverse of LonToWorldX (independent of zoom - the linear mapping cancels).
+double WorldXToLon(double worldX, int zoom) {
+    return worldX / WorldScale(zoom) * 360.0 - 180.0;
+}
+
+// Inverse of LatToWorldY.
+double WorldYToLat(double worldY, int zoom) {
+    const double n = 3.14159265358979323846 -
+                     (2.0 * 3.14159265358979323846 * worldY) / WorldScale(zoom);
+    return std::atan(std::sinh(n)) * 180.0 / 3.14159265358979323846;
+}
+
 struct WorldBounds {
     double left;
     double top;
@@ -118,12 +118,6 @@ WorldBounds GetAllowedBounds(int zoom) {
     };
 }
 
-// Clamp the viewport centre so that the user cannot pan beyond the allowed
-// operating area.
-//
-// If the viewport is larger than the permitted area at a low zoom, that axis
-// is locked to the middle of the allowed area instead of allowing pointless
-// movement beyond it.
 void ClampCenterToAllowedArea(Rectangle viewport) {
     const WorldBounds b = GetAllowedBounds(g_zoom);
 
@@ -165,9 +159,6 @@ void RemoveBadFile(const std::string& path) {
     std::filesystem::remove(path, ec);
 }
 
-// Returns true only when this tile intersects the project's allowed geographic
-// area. This is the second line of defence: even if viewport maths changes
-// later, an out-of-area tile will not be requested.
 bool TileIntersectsAllowedArea(int z, int x, int y) {
     const WorldBounds b = GetAllowedBounds(z);
 
@@ -185,10 +176,8 @@ bool TileIntersectsAllowedArea(int z, int x, int y) {
 Texture2D* GetTileTexture(int z, int x, int y) {
     const int tileCount = 1 << z;
 
-    // Unlike the previous version, do not wrap X around the planet.
     if (x < 0 || x >= tileCount || y < 0 || y >= tileCount) return nullptr;
 
-    // Hard download boundary.
     if (!TileIntersectsAllowedArea(z, x, y)) return nullptr;
 
     TileKey key{z, x, y};
@@ -241,7 +230,6 @@ void ChangeZoom(int newZoom, Vector2 mouse, Rectangle viewport) {
     newZoom = std::clamp(newZoom, MIN_ZOOM, MAX_ZOOM);
     if (newZoom == g_zoom) return;
 
-    // Keep the geographic point under the cursor as stable as possible.
     const double oldLeft = g_centerWorldX - viewport.width * 0.5;
     const double oldTop  = g_centerWorldY - viewport.height * 0.5;
 
@@ -283,7 +271,6 @@ void UnloadOsmMap() {
 }
 
 bool UpdateOsmMap(Rectangle viewport) {
-    // Also clamps the initial position and handles any viewport-size changes.
     ClampCenterToAllowedArea(viewport);
 
     const Vector2 mouse = GetMousePosition();
@@ -352,8 +339,6 @@ void DrawOsmMap(Rectangle viewport) {
 
     for (int ty = firstTileY; ty <= lastTileY; ++ty) {
         for (int tx = firstTileX; tx <= lastTileX; ++tx) {
-            // This check prevents even asking GetTileTexture for tiles outside
-            // the project's permitted geographic area.
             if (!TileIntersectsAllowedArea(g_zoom, tx, ty)) continue;
 
             Texture2D* texture = GetTileTexture(g_zoom, tx, ty);
@@ -419,6 +404,50 @@ Vector2 LegacyWorldToScreen(Vector2 km, float worldKm, Rectangle viewport) {
         viewport.x + static_cast<float>(worldX - left),
         viewport.y + static_cast<float>(worldY - top)
     };
+}
+
+// ----------------------------------------------------------------------------
+//  Lat/lon <-> simulation-grid conversion
+// ----------------------------------------------------------------------------
+//
+// The legacy overlay maps km = 0..worldKm onto a fixed reference span at
+// LEGACY_REFERENCE_ZOOM, anchored at INITIAL_LAT/LON.  These two helpers are
+// exact inverses of that mapping in Web-Mercator space, so anything you place
+// on the drone grid lines up with the OSM tiles.
+//
+// Note: the mapping is linear in km but Web Mercator is not linear in lat,
+// so there is a tiny (< a few metres) horizontal-vs-latitude drift over the
+// 50 km extent at Carlow's latitude.  That's well below the resolution the
+// simulation can represent, so it never matters in practice.
+
+void KmToLatLon(Vector2 km, float worldKm, double& outLat, double& outLon) {
+    const double referenceCenterX = LonToWorldX(INITIAL_LON, LEGACY_REFERENCE_ZOOM);
+    const double referenceCenterY = LatToWorldY(INITIAL_LAT, LEGACY_REFERENCE_ZOOM);
+    const double referenceSpan    = LEGACY_REFERENCE_TILES * TILE_SIZE;
+
+    const double worldX = referenceCenterX - referenceSpan * 0.5 +
+                          (static_cast<double>(km.x) / worldKm) * referenceSpan;
+    const double worldY = referenceCenterY - referenceSpan * 0.5 +
+                          (static_cast<double>(km.y) / worldKm) * referenceSpan;
+
+    outLon = WorldXToLon(worldX, LEGACY_REFERENCE_ZOOM);
+    outLat = WorldYToLat(worldY, LEGACY_REFERENCE_ZOOM);
+}
+
+Vector2 LatLonToKm(double lat, double lon, float worldKm) {
+    const double referenceCenterX = LonToWorldX(INITIAL_LON, LEGACY_REFERENCE_ZOOM);
+    const double referenceCenterY = LatToWorldY(INITIAL_LAT, LEGACY_REFERENCE_ZOOM);
+    const double referenceSpan    = LEGACY_REFERENCE_TILES * TILE_SIZE;
+
+    const double worldX = LonToWorldX(lon, LEGACY_REFERENCE_ZOOM);
+    const double worldY = LatToWorldY(lat, LEGACY_REFERENCE_ZOOM);
+
+    const double kmX = ((worldX - (referenceCenterX - referenceSpan * 0.5))
+                        / referenceSpan) * worldKm;
+    const double kmY = ((worldY - (referenceCenterY - referenceSpan * 0.5))
+                        / referenceSpan) * worldKm;
+
+    return { static_cast<float>(kmX), static_cast<float>(kmY) };
 }
 
 int GetOsmZoom() {
