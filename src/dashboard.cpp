@@ -67,6 +67,14 @@ static void DrawDetailPanel() {
         Field("Path", TextFormat("%d / %d waypoints", std::max(0, d.nextWp - 1), (int)d.path.size() - 1), x, y);
     } else {
         Field("Parked at", d.locIndex >= 0 ? g_locations[d.locIndex].name.c_str() : "-", x, y); y += STEP;
+        // Target destination shown below "Parked at" so you can see where the
+        // drone will launch to as soon as auto-launch (or a manual Dispatch)
+        // sends it out.
+        const char* target =
+            (d.lastDestLoc >= 0 && d.lastDestLoc < (int)g_locations.size())
+                ? g_locations[d.lastDestLoc].name.c_str()
+                : "(not assigned)";
+        Field("Target dest.", target, x, y, COL_ACCENT);                              y += STEP;
         Field("Speed", "0 km/h", x, y);
     }
 

@@ -40,16 +40,15 @@ static void ResumeSavedMission(Drone& d) {
     DispatchTo(d, m.endLoc);
 }
 
-// A drone is "ready to launch" when it is parked at the Drone Facility, has
-// no active task, no damage, no outdated software, sufficient battery, and
-// has at least one destination to fly to.
-static bool ReadyToLaunch(const Drone& d) {
-    return !d.active
-        && d.autoState == AUTO_IDLE
-        && d.locIndex == FACILITY
-        && d.damage == DMG_NONE
-        && !SwOutdated(d)
-        && d.battery >= MIN_DISPATCH_BATTERY;
+// True when a yellow status will be fixed by automation before launch, so the
+// drone must be held at the facility until servicing completes.  If the
+// corresponding task is OFF, that status does NOT block launch - the user has
+// chosen not to manage it, so automation treats the drone as fit to fly.
+static bool BlockedByServicing(const Drone& d, const Settings& cfg) {
+    if (d.damage != DMG_NONE        && cfg.autoRepair)   return true;
+    if (d.battery < AUTO_LOW_BATTERY && cfg.autoRecharge) return true;
+    if (SwOutdated(d)                && cfg.autoUpdate)   return true;
+    return false;
 }
 
 // Automation processes exactly one task per drone at a time.  When a task
@@ -61,11 +60,19 @@ static bool ReadyToLaunch(const Drone& d) {
 // Every task is gated on its own Settings switch.  The master switch is
 // checked by the caller (main.cpp) so we do not re-check it here.
 //
-// autoLaunch is the ONLY thing that starts a mission from automation.
-// randomizeDestination only decides the destination:
-//   - ON  : pick a fresh random location (excluding the facility)
-//   - OFF : re-use d.lastDestLoc (with a random fallback if unset)
+// Auto-launch rules (matching the "yellow" rule):
+//   * Any yellow status WITH its respective task ON blocks launch - the drone
+//     is held at the facility, serviced, then launched once clean.
+//   * Any yellow status WITH its respective task OFF does NOT block launch -
+//     the user opted out of managing it, so the drone flies as-is.
+//   * Auto-launch is immediate once the drone is eligible - no idle delay.
+//
+// randomizeDestination decides the destination:
+//   - ON  : pick a fresh random location each launch
+//   - OFF : re-use d.lastDestLoc; if there is no previous destination yet the
+//           drone stays docked (nothing to fly to)
 void UpdateAutomation(float simDt, int selectedDrone) {
+    (void)selectedDrone;   // reserved for future "hold this drone" behaviour
     const Settings& cfg = g_app.settings;
 
     for (int i = 0; i < (int)g_fleet.size(); i++) {
@@ -80,7 +87,6 @@ void UpdateAutomation(float simDt, int selectedDrone) {
         switch (d.autoState) {
         case AUTO_IDLE:
             if (d.active) {
-                d.idleTimer = 0.0f;
                 if (!d.returning && CannotFinishRoute(d)) {
                     d.savedMission = { true, d.startLoc, d.endLoc };
                     DivertTo(d, NearestLocation(d.pos));
@@ -89,7 +95,14 @@ void UpdateAutomation(float simDt, int selectedDrone) {
                 break;
             }
 
-            // Parked: priority 1 repair, 2 recharge, 3 update.
+            // Parked at the facility (or wherever it ended up after a mission).
+            // Priority 1: repair.  2: recharge.  3: update.  4: launch.
+            //
+            // The yellow-status rule is implemented via BlockedByServicing:
+            // a yellow status with its task ON will be handled here first and
+            // is therefore a blocker; a yellow status with its task OFF is
+            // ignored and the drone goes on to the launch branch.
+
             if (cfg.autoRepair && d.damage != DMG_NONE) {
                 BeginRepairing(d);
             } else if (cfg.autoRecharge && d.battery < AUTO_LOW_BATTERY) {
@@ -97,32 +110,22 @@ void UpdateAutomation(float simDt, int selectedDrone) {
             } else if (cfg.autoUpdate && SwOutdated(d)) {
                 BeginUpdating(d);
             } else if (cfg.autoLaunch
-                       && i != selectedDrone
-                       && ReadyToLaunch(d)) {
-                // Docked at the facility, healthy - wait the usual idle delay,
-                // then launch to either a fresh random location or the same
-                // destination as last time.
-                d.idleTimer += simDt;
-                if (d.idleTimer >= AUTO_IDLE_DELAY) {
-                    d.idleTimer = 0.0f;
-
-                    int dest = -1;
-                    if (cfg.randomizeDestination) {
-                        do {
-                            dest = GetRandomValue(0, (int)g_locations.size() - 1);
-                        } while (dest == FACILITY);
-                    } else if (d.lastDestLoc >= 0 && d.lastDestLoc != FACILITY) {
-                        dest = d.lastDestLoc;
-                    } else {
-                        do {
-                            dest = GetRandomValue(0, (int)g_locations.size() - 1);
-                        } while (dest == FACILITY);
-                    }
-
-                    if (dest >= 0) DispatchTo(d, dest);
+                       && d.locIndex == FACILITY
+                       && !BlockedByServicing(d, cfg)) {
+                // Launch immediately.  Every eligible drone dispatches on the
+                // same frame - there is no per-frame cap and no idle timer.
+                int dest = -1;
+                if (cfg.randomizeDestination) {
+                    do {
+                        dest = GetRandomValue(0, (int)g_locations.size() - 1);
+                    } while (dest == d.locIndex);
+                } else if (d.lastDestLoc >= 0 && d.lastDestLoc != d.locIndex) {
+                    dest = d.lastDestLoc;
+                } else {
+                    // randomize off, no previous destination set: nothing to fly to
+                    break;
                 }
-            } else {
-                d.idleTimer = 0.0f;
+                if (dest >= 0) DispatchTo(d, dest);
             }
             break;
 
@@ -187,9 +190,6 @@ const char* AutoStateText(const Drone& d) {
                               d.autoTimer / BASE_TIME_SCALE);
         return TextFormat("Charging (%.0f s left)", d.autoTimer / BASE_TIME_SCALE);
     default:
-        if (d.idleTimer > 0.0f)
-            return TextFormat("Idle (launch in %.0f s)",
-                              (AUTO_IDLE_DELAY - d.idleTimer) / BASE_TIME_SCALE);
         return "Idle";
     }
 }

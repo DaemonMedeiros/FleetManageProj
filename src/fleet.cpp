@@ -120,8 +120,9 @@ void InitFleet() {
     const char* versions[4] = { "2.4.0", "2.4.0", "2.3.1", "2.2.0" };
 
     g_fleet.clear();
-    const int COUNT = 12;
-    const int hqIndex = 0;   // Drone Facility is the first entry above.
+    const int COUNT   = 12;
+    const int hqIndex = 0;                       // Drone Facility is index 0
+    const int destN   = (int)g_locations.size() - 1;   // destinations 1..N
 
     for (int i = 0; i < COUNT; i++) {
         Drone d;
@@ -136,38 +137,26 @@ void InitFleet() {
         d.sw = versions[GetRandomValue(0, 3)];
         d.priority = GetRandomValue(1, 3);
         d.battery = (float)GetRandomValue(60, 100);
-        // Every drone starts parked at the Drone Facility.
-        d.locIndex = hqIndex;
-        d.pos = ParkPos(d, d.locIndex);
+        // Every drone starts parked at the Drone Facility, inactive, with no
+        // active mission.  Each gets a pre-assigned destination (lastDestLoc)
+        // so auto-launch has somewhere to send it the moment it is enabled.
+        // Round-robin across the non-facility locations so no two drones
+        // share a target at startup.
+        d.active      = false;
+        d.locIndex    = hqIndex;
+        d.pos         = ParkPos(d, d.locIndex);
+        d.startLoc    = -1;
+        d.endLoc      = -1;
+        d.lastDestLoc = 1 + (i % destN);
+        d.returning   = false;
         g_fleet.push_back(d);
     }
 
     // A few inactive drones with problems, to make the dashboard interesting.
-    g_fleet[7].damage  = DMG_MINOR;  g_fleet[7].condition  =  55.0f;
-    g_fleet[10].damage = DMG_MAJOR;  g_fleet[10].condition =  18.0f;
-    g_fleet[9].battery = 14.0f;
-    g_fleet[8].sw      = "2.2.0";
+    // All still parked at the Drone Facility, all still inactive.
+    g_fleet[7].damage   = DMG_MINOR;  g_fleet[7].condition  =  55.0f;
+    g_fleet[10].damage  = DMG_MAJOR;  g_fleet[10].condition =  18.0f;
+    g_fleet[9].battery  = 14.0f;
+    g_fleet[8].sw       = "2.2.0";
     g_fleet[11].battery = 38.0f;
-
-    // First six drones start out mid-mission from the Drone Facility.
-    // Seed a remembered destination so that with randomizeDestination OFF
-    // their future auto-launches have something to repeat.
-    for (int i = 0; i < 6; i++) {
-        Drone& d = g_fleet[i];
-        d.damage = DMG_NONE;
-        d.condition = 100.0f;
-        Dispatch(d);                                // records lastDestLoc
-        d.battery = (float)GetRandomValue(45, 95);
-        float total = RemainingKm(d);
-        MoveAlong(d, total * GetRandomValue(10, 80) / 100.0f);
-    }
-
-    // Give the still-parked drones a lastDestLoc too, so the "remember the
-    // previous destination" mode has something to replay the first time.
-    for (int i = 6; i < COUNT; i++) {
-        Drone& d = g_fleet[i];
-        int end;
-        do { end = GetRandomValue(1, (int)g_locations.size() - 1); } while (end == hqIndex);
-        d.lastDestLoc = end;
-    }
 }

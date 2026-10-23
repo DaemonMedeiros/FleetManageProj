@@ -8,8 +8,7 @@
 #include "ui.h"
 
 // A toggle row.  Returns true on click so the caller can flip the bool.
-// The row is tall enough for the description to breathe - the master row now
-// uses a 66 px height so its two-line description has proper spacing.
+// The row is tall enough for the description to breathe.
 static bool ToggleRow(Rectangle row, const char* label, const char* desc,
                       bool value, bool enabled)
 {
@@ -43,15 +42,29 @@ static bool ToggleRow(Rectangle row, const char* label, const char* desc,
     return hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
 }
 
+// Apply the master switch's new value to every per-task flag.  Toggling the
+// master off really means "no automation anywhere"; toggling it on turns every
+// task on at once.  Individual tasks can then be tuned from that starting
+// point without touching the master again.
+static void ApplyMaster(Settings& s, bool enabled) {
+    s.enabled              = enabled;
+    s.autoRepair           = enabled;
+    s.autoRecharge         = enabled;
+    s.autoUpdate           = enabled;
+    s.autoLaunch           = enabled;
+    s.randomizeDestination = enabled;
+    s.autoReturn           = enabled;
+}
+
 void DrawSettings() {
     // Page heading
     DrawText("AUTOMATION SETTINGS", 10, 62, 22, COL_TEXT);
-    DrawText("Changes take effect immediately. The master switch disables every task below.",
+    DrawText("Changes take effect immediately. The master switch sets every task below in one go.",
              10, 90, 14, COL_DIM);
 
     Settings& s = g_app.settings;
 
-    // ---- Master switch card (grown so the description has room) ----
+    // ---- Master switch card ----
     const Rectangle masterCard = { 10, 116, 1260, 100 };
     DrawRectangleRounded(masterCard, 0.01f, 4, COL_PANEL);
     DrawRectangleLinesEx(masterCard, 1, COL_BORDER);
@@ -64,91 +77,66 @@ void DrawSettings() {
                   "Turn every automatic repair / recharge / update / launch / return on or off.",
                   s.enabled, true))
     {
-        s.enabled = !s.enabled;
-        if (!s.enabled) ReleaseAllFromAutomation();
+        const bool newValue = !s.enabled;
+        ApplyMaster(s, newValue);
+        if (!newValue) ReleaseAllFromAutomation();
     }
 
     // ---- Per-task card ----
-    const Rectangle card = { 10, 228, 1260, 316 };
+    // Fills the whole area below the master card (down to y=710).  Six rows
+    // at 62 px each plus generous padding.
+    const Rectangle card = { 10, 228, 1260, 482 };
     DrawRectangleRounded(card, 0.01f, 4, COL_PANEL);
     DrawRectangleLinesEx(card, 1, COL_BORDER);
     DrawText("AUTOMATION TASKS", (int)card.x + 14, (int)card.y + 10, 14, COL_DIM);
 
-    // Individual task toggles grey out while the master switch is off.
-    const bool master = s.enabled;
-
-    const float rowH = 46.0f;
-    const float gap  = 4.0f;
+    const float rowH = 62.0f;
+    const float gap  = 8.0f;
     const float x    = card.x + 14;
     const float w    = card.width - 28;
     float y = card.y + 34;
 
+    // Individual task switches are always clickable - they are independent of
+    // the master once it has set them.  (Master OFF still stops every task at
+    // runtime because UpdateAutomation is gated on s.enabled.)
     if (ToggleRow({ x, y, w, rowH },
                   "Auto Repair",
                   "Repair damaged drones at the nearest location (15 s per repair).",
-                  s.autoRepair, master))
+                  s.autoRepair, true))
         s.autoRepair = !s.autoRepair;
     y += rowH + gap;
 
     if (ToggleRow({ x, y, w, rowH },
                   "Auto Recharge",
                   "Charge parked drones - fast task below 50% battery, plus a slow trickle otherwise.",
-                  s.autoRecharge, master))
+                  s.autoRecharge, true))
         s.autoRecharge = !s.autoRecharge;
     y += rowH + gap;
 
     if (ToggleRow({ x, y, w, rowH },
                   "Auto Software Update",
                   "Install the latest software on outdated drones (15 s per update).",
-                  s.autoUpdate, master))
+                  s.autoUpdate, true))
         s.autoUpdate = !s.autoUpdate;
     y += rowH + gap;
 
     if (ToggleRow({ x, y, w, rowH },
                   "Auto Launch",
                   "Send docked, healthy drones out on a mission from the Drone Facility.",
-                  s.autoLaunch, master))
+                  s.autoLaunch, true))
         s.autoLaunch = !s.autoLaunch;
     y += rowH + gap;
 
     if (ToggleRow({ x, y, w, rowH },
                   "Randomize Destination",
                   "ON: pick a fresh destination each launch. OFF: re-use the previous destination.",
-                  s.randomizeDestination, master))
+                  s.randomizeDestination, true))
         s.randomizeDestination = !s.randomizeDestination;
     y += rowH + gap;
 
     if (ToggleRow({ x, y, w, rowH },
                   "Auto Return To Launch",
                   "After arriving, fly back to the Drone Facility before parking.",
-                  s.autoReturn, master))
+                  s.autoReturn, true))
         s.autoReturn = !s.autoReturn;
-
-    // ---- Status summary ----
-    const Rectangle summary = { 10, 558, 1260, 152 };
-    DrawRectangleRounded(summary, 0.01f, 4, COL_PANEL);
-    DrawRectangleLinesEx(summary, 1, COL_BORDER);
-    DrawText("CURRENT BEHAVIOUR", (int)summary.x + 14, (int)summary.y + 10, 14, COL_DIM);
-
-    int onCount = 0;
-    if (s.autoRepair)           onCount++;
-    if (s.autoRecharge)         onCount++;
-    if (s.autoUpdate)           onCount++;
-    if (s.autoLaunch)           onCount++;
-    if (s.randomizeDestination) onCount++;
-    if (s.autoReturn)           onCount++;
-
-    DrawText(TextFormat("Tasks enabled: %d / 6", onCount),
-             (int)summary.x + 14, (int)summary.y + 36, 16, COL_TEXT);
-
-    DrawText(s.enabled
-                ? "Master automation: ON - tasks run automatically."
-                : "Master automation: OFF - only manual actions via the Dashboard work.",
-             (int)summary.x + 14, (int)summary.y + 62, 16,
-             s.enabled ? COL_GOOD : COL_WARN);
-
-    DrawText("Auto Launch starts the mission. Randomize Destination only chooses where it goes.",
-             (int)summary.x + 14, (int)summary.y + 96, 14, COL_DIM);
-    DrawText("Drones always launch from the Drone Facility; Auto Return brings them back to it.",
-             (int)summary.x + 14, (int)summary.y + 118, 14, COL_DIM);
 }

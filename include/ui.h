@@ -13,15 +13,19 @@ constexpr int SCREEN_H = 720;
 enum Page { PAGE_DASHBOARD = 0, PAGE_MAP, PAGE_SETTINGS };
 
 // Per-task automation switches + auto-return + destination behaviour.
+// Defaults: master switch OFF, every individual task OFF.  A fresh simulation
+// starts fully manual.  Toggling the master switch copies its new value into
+// every per-task flag so "Master OFF" really means "no automation anywhere",
+// and "Master ON" turns everything back on in one click.
 struct Settings {
-    bool enabled              = true;   // master switch - whole automation on/off
-    bool autoRepair           = true;   // automation may repair damaged drones
-    bool autoRecharge         = true;   // automation may recharge low-battery drones
-    bool autoUpdate           = true;   // automation may update outdated software
-    bool autoLaunch           = true;   // launch docked, healthy drones from the Drone Facility
-    bool randomizeDestination = true;   // pick a fresh random destination on each launch
-                                        // (OFF = re-use the drone's previous destination)
-    bool autoReturn           = true;   // return to the Drone Facility after arriving
+    bool enabled              = false;   // master switch - whole automation on/off
+    bool autoRepair           = false;   // automation may repair damaged drones
+    bool autoRecharge         = false;   // automation may recharge low-battery drones
+    bool autoUpdate           = false;   // automation may update outdated software
+    bool autoLaunch           = false;   // launch docked, healthy drones from the Drone Facility
+    bool randomizeDestination = false;   // pick a fresh random destination on each launch
+                                         // (OFF = re-use the drone's previous destination)
+    bool autoReturn           = false;   // return to the Drone Facility after arriving
 };
 
 struct AppState {

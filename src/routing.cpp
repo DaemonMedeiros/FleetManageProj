@@ -1,7 +1,7 @@
 // routing.cpp - position tracking and route / path handling
 #include "routing.h"
 
-#include "ui.h"        // g_app.settings.autoReturn
+#include "ui.h"        // g_app.settings
 
 #include "raymath.h"
 
@@ -117,16 +117,20 @@ void ApplyFasterRoute(Drone& d) {
     d.nextWp = 1;
 }
 
-// Arrive - park at the destination.  If autoReturn is on, immediately begin
-// the return leg back to the Drone Facility using a straight-line path from
-// the exact landing point (no jitter waypoints, no ParkPos scatter at the
-// start of the return) so the drone does not appear to overshoot or wander.
+// Arrive - park at the destination.
+//
+// The return-to-facility leg is gated on BOTH the master switch and the
+// autoReturn setting.  With the master switch off, a drone that is already
+// en route when the switch is flipped will still finish its current mission
+// but will then park at the destination - it will NOT auto-return, because
+// the master switch means "no automation of any kind".
 void Arrive(Drone& d) {
     const int landedAt      = d.endLoc;
     const int launchAt      = d.startLoc;
     const bool wasReturning = d.returning;
 
-    const bool doReturn = g_app.settings.autoReturn
+    const bool doReturn = g_app.settings.enabled
+                       && g_app.settings.autoReturn
                        && !wasReturning
                        && landedAt >= 0
                        && landedAt != launchAt
