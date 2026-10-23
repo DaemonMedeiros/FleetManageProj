@@ -33,8 +33,11 @@ void MoveAlong(Drone& d, float km) {
 // Dispatch from d.locIndex to a chosen destination.
 // Precondition: d.locIndex >= 0 and end != d.locIndex.
 //
-// Records the destination in d.lastDestLoc so a later autoLaunch with
-// randomizeDestination OFF can replay the same trip.
+// Adds 1..3 random jitter waypoints to the flight path.  This is only used
+// for "start a new mission from a parked drone at a named location" - it is
+// NOT suitable for a return-to-base leg, because the jitter waypoints can
+// fall past the destination and make it look like the drone overshot.
+// Arrive() below deliberately does not use this function for the return.
 void DispatchTo(Drone& d, int end) {
     int start = d.locIndex;
 
@@ -71,8 +74,7 @@ void DispatchTo(Drone& d, int end) {
     d.histTimer = 0.0f;
 }
 
-// Manual "Dispatch" button: pick a fresh random destination.  Does not depend
-// on any automation setting - this is the user explicitly asking for a mission.
+// Manual "Dispatch" button: pick a fresh random destination.
 void Dispatch(Drone& d) {
     int n = (int)g_locations.size();
     int end;
@@ -80,6 +82,8 @@ void Dispatch(Drone& d) {
     DispatchTo(d, end);
 }
 
+// Active drone: fly in a straight line to a location and land.
+// No jitter waypoints - used for emergency diversions and for the return leg.
 void DivertTo(Drone& d, int loc) {
     if (!d.active || loc < 0) return;
     d.endLoc = loc;
@@ -113,32 +117,52 @@ void ApplyFasterRoute(Drone& d) {
     d.nextWp = 1;
 }
 
-// Arrive - park at the destination, and if autoReturn is on, immediately
-// dispatch back to the Drone Facility (which is every drone's startLoc).
-// Damage and battery drain during the return leg are handled by UpdateFleet.
+// Arrive - park at the destination.  If autoReturn is on, immediately begin
+// the return leg back to the Drone Facility using a straight-line path from
+// the exact landing point (no jitter waypoints, no ParkPos scatter at the
+// start of the return) so the drone does not appear to overshoot or wander.
 void Arrive(Drone& d) {
     const int landedAt      = d.endLoc;
     const int launchAt      = d.startLoc;
     const bool wasReturning = d.returning;
 
+    const bool doReturn = g_app.settings.autoReturn
+                       && !wasReturning
+                       && landedAt >= 0
+                       && landedAt != launchAt
+                       && d.damage != DMG_MAJOR;
+
+    if (doReturn) {
+        // Return leg: start the return from the exact landing point, not from
+        // a scattered parking slot, so the path is a clean straight line back
+        // to the facility.  The drone stays active so UpdateFleet continues
+        // draining battery and applying wear while it flies home.
+        const int FACILITY = 0;
+
+        d.startLoc  = FACILITY;                        // for display: "returning to facility"
+        d.endLoc    = FACILITY;
+        d.returning = true;
+        d.active    = true;
+        d.speed     = d.cruise;
+        d.locIndex  = -1;
+
+        d.path.clear();
+        d.path.push_back(g_locations[landedAt].pos);   // exact landing point
+        d.path.push_back(g_locations[FACILITY].pos);   // exact facility point
+        d.nextWp = 1;
+
+        d.history.clear();
+        d.history.push_back(g_locations[landedAt].pos);
+        d.histTimer = 0.0f;
+        return;
+    }
+
+    // No return: park at the destination in a scattered slot.
     d.active    = false;
     d.speed     = 0.0f;
     d.locIndex  = landedAt;
-    d.pos       = ParkPos(d, d.locIndex);
+    d.pos       = landedAt >= 0 ? ParkPos(d, landedAt) : d.pos;
     d.path.clear();
     d.nextWp    = 0;
     d.returning = false;
-
-    // Facility index is always location 0.
-    const int FACILITY = 0;
-
-    if (g_app.settings.autoReturn
-        && !wasReturning
-        && launchAt >= 0
-        && landedAt != launchAt
-        && d.damage != DMG_MAJOR) {
-        // Set startLoc back to FACILITY so the return leg is "destination -> facility".
-        d.startLoc = FACILITY;
-        DispatchTo(d, FACILITY);
-    }
 }
